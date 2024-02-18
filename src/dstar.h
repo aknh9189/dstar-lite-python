@@ -109,9 +109,11 @@ public:
     void printMap();
 
     py::list getPath();
+    py::list getGValues();
 
 private:
     bool init_called;
+    bool edge_cost_changed;
     py::array_t<double> map;
     list<state> path;
 
@@ -136,16 +138,15 @@ private:
     double eightCondist(const state& a, const state& b);
     int computeShortestPath();
     void updateVertex(state u);
-    void insert(state u);
-    void remove(const state& u);
+    void insertOpen(state u);
+    void removeOpen(const state& u);
     double trueDist(const state& a, const state& b);
     double heuristic(const state& a, const state& b);
     state calculateKey(state u);
-    void getSucc(state u, list<state> &s);
     void getPred(state u, list<state> &s);
     double cost(const state& a, const state& b);
     bool occupied(const state& u);
-    bool isValid(const state& u);
+    bool isInOpenList(const state& u);
     bool isStateInMap(const state& u);
     float keyHashCode(const state& u);
 };

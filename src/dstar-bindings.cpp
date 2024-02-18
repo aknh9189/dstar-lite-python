@@ -18,6 +18,7 @@ PYBIND11_MODULE(dstar_lite, m) {
         .def("replan", &Dstar::replan)
         .def("getPath", &Dstar::getPath)
         // .def("getMap", &Dstar::getMap)
+        .def("getGValues", &Dstar::getGValues)
         .def("printMap", &Dstar::printMap);
 
         
