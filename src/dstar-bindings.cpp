@@ -17,7 +17,6 @@ PYBIND11_MODULE(dstar_lite, m) {
         .def("updateCells", &Dstar::updateCells, py::arg("indexes").noconvert(true), py::arg("values").noconvert(true))
         .def("replan", &Dstar::replan)
         .def("getPath", &Dstar::getPath)
-        // .def("getMap", &Dstar::getMap)
         .def("getGValues", &Dstar::getGValues)
         .def("getRHSValues", &Dstar::getRHSValues)
         .def("getKeys", &Dstar::getKeys)

@@ -102,10 +102,8 @@ public:
     void reset();
     void init(int sI, int sJ, int gI, int gJ);
     void updateStart(int i, int j);
-    // void updateGoal(int iArg, int jArg);
     bool replan();
 
-    py::array_t<double> getMap() { return map; };
     void updateCells(const py::array_t<int>& indexes, const py::array_t<double>& values);
     void updateCell(int i, int j, double val);
     void printMap();
@@ -119,23 +117,27 @@ private:
     double diag_cost_scale;
     bool init_called;
     bool edge_cost_changed;
-    py::array_t<double> map;
-    list<state> path;
+    std::vector<double> map;
+    int map_width, map_height;
+    std::vector<state> path;
 
     double k_m;
     state s_start, s_goal, s_last;
     int maxSteps;
 
     ds_pq openList;
-    ds_ch cellHash;
-    ds_oh openHash;
+    // store the g and rhs values for each cell
+    std::vector<double> g_values;
+    std::vector<double> rhs_values;
+    // store the key hashes, so we can lazy remove from the open list
+    // default is inf 
+    std::vector<float> keyHashes;
 
     // calls init to reset structures 
     void setMap(const py::array_t<double, py::array::c_style>& mapArg); // NOTE: CAN SOMETIMES DECIDE TO SILENT COPY OR NOT SILENT COPY
     double getMapCell(const state& state);
     void setMapCell(const state& state, double value);
     bool close(double x, double y);
-    void makeNewCell(const state& u);
     double getG(const state& u);
     double getRHS(const state& u);
     void setG(const state& u, double g);
@@ -149,7 +151,7 @@ private:
     double trueDist(const state& a, const state& b);
     double heuristic(const state& a, const state& b);
     state calculateKey(const state& u);
-    void getPred(const state& u, list<state> &s);
+    void getPred(const state& u, std::vector<state> &s);
     double cost(const state& a, const state& b);
     bool occupied(const state& u);
     bool isStateInOpenList(const state& u);

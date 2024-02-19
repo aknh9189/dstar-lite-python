@@ -32,40 +32,43 @@ Dstar::Dstar(const py::array_t<double, py::array::c_style>& mapArg, int maxSteps
 
     // create a copy of the numpy array
     auto buffer = mapArg.request();
-    this->map = py::array_t<double>(buffer.shape, buffer.strides);
-    auto r = this->map.mutable_unchecked<2>();
+    map_height = buffer.shape[0];
+    map_width = buffer.shape[1];
+    this->map = std::vector<double>(map_width * map_height);
     auto r2 = mapArg.unchecked<2>();
-    if (r.shape(0) > MAX_MAP_DIM || r.shape(1) > MAX_MAP_DIM)
+    if (r2.shape(0) > MAX_MAP_DIM || r2.shape(1) > MAX_MAP_DIM)
     {
         std::throw_with_nested(std::runtime_error("Map is too large"));
     }
-    for (py::ssize_t i = 0; i < r.shape(0); i++)
+    for (py::ssize_t i = 0; i < r2.shape(0); i++)
     {
-        for (py::ssize_t j = 0; j < r.shape(1); j++)
+        for (py::ssize_t j = 0; j < r2.shape(1); j++)
         {
             if (r2(i, j) < 1) {
                 throw std::runtime_error("All cells must have a cost >= 1");
             }
-            r(i, j) = r2(i, j);
+            this->map[i * map_width + j] = r2(i, j);
         }
     }
 
+    this->g_values = std::vector<double>(map_width * map_height, std::numeric_limits<double>::infinity());
+    this->rhs_values = std::vector<double>(map_width * map_height, std::numeric_limits<double>::infinity());
+    this->keyHashes = std::vector<float>(map_width * map_height, std::numeric_limits<float>::infinity());
+
 }
 double Dstar::getMapCell(const state& s){
-    auto r = map.unchecked<2>();
-    return r(s.i, s.j);
+    return this->map[s.i * map_width + s.j];
 }
 void Dstar::setMapCell(const state& s, double val){
-    auto r = map.mutable_unchecked<2>();
-    r(s.i, s.j) = val;
+    this->map[s.i * map_width + s.j] = val;
 }
+
 void Dstar::printMap() {
-    auto r = map.unchecked<2>();
-    for (py::ssize_t i = 0; i < r.shape(0); i++)
+    for (auto i = 0; i < map_height; i++)
     {
-        for (py::ssize_t j = 0; j < r.shape(1); j++)
+        for (auto j = 0; j < map_width; j++)
         {
-            std::cout << r(i, j) << " ";
+            std::cout << this->map[i * map_width + j] << " ";
         }
         std::cout << std::endl;
     }
@@ -86,23 +89,18 @@ float Dstar::keyHashCode(const state& u)
 
 bool Dstar::isStateInOpenList(const state& u)
 {
-    ds_oh::iterator cur = openHash.find(u);
-    if (cur == openHash.end()) {
+    // if inf, this state hasn't been added to the open list yet
+    if (keyHashes[u.i * map_width + u.j] == std::numeric_limits<float>::infinity()) {
         return false;
     }
     return true;
 }
 bool Dstar::isStateWithKeyInOpenList(const state& u) {
-    ds_oh::iterator cur = openHash.find(u);
-    if (cur == openHash.end()) {
-        return false;
-    }
-    return close(cur->second, keyHashCode(u));
+    return close(keyHashes[u.i * map_width + u.j], keyHashCode(u));
 }
 
 bool Dstar::isStateInMap(const state& u) {
-    auto r = map.unchecked<2>();
-    return u.i >= 0 && u.j >= 0 && u.i < r.shape(0) && u.j < r.shape(1);
+    return u.i >= 0 && u.j >= 0 && u.i < map_height && u.j < map_width;
 }
 
 /* void Dstar::getPath()
@@ -140,9 +138,12 @@ bool Dstar::occupied(const state& u)
  */
 void Dstar::init(int sI, int sJ, int gI, int gJ)
 {
-    cellHash.clear();
+    // reset g and rhs values
+    // line 06
+    std::fill(g_values.begin(), g_values.end(), std::numeric_limits<double>::infinity());
+    std::fill(rhs_values.begin(), rhs_values.end(), std::numeric_limits<double>::infinity());
     path.clear();
-    openHash.clear();
+    std::fill(keyHashes.begin(), keyHashes.end(), std::numeric_limits<float>::infinity());
     while (!openList.empty()) {
         openList.pop(); // line 02
     }
@@ -159,28 +160,12 @@ void Dstar::init(int sI, int sJ, int gI, int gJ)
         throw std::runtime_error("Start or goal is outside of the map");
     }
 
-    cellInfo tmp;
-    tmp.rhs = 0; // line 05
-    cellHash[s_goal] = tmp;
+    setRHS(s_goal, 0); // line 05
 
     insertOpen(calculateKey(s_goal)); // line 06
 
     init_called = true;
     edge_cost_changed = true;
-}
-/* void Dstar::makeNewCell(state u)
- * --------------------------
- * Checks if a cell is in the hash table, if not it adds it in.
- */
-void Dstar::makeNewCell(const state& u)
-{
-
-    if (cellHash.find(u) != cellHash.end())
-        return;
-
-    cellInfo tmp;
-    tmp.g = tmp.rhs = std::numeric_limits<double>::infinity(); // line 06
-    cellHash[u] = tmp;
 }
 
 /* double Dstar::getG(state u)
@@ -189,13 +174,7 @@ void Dstar::makeNewCell(const state& u)
  */
 double Dstar::getG(const state& u)
 {
-
-    if (cellHash.find(u) == cellHash.end()) {
-        // return default value of cellInfo, line 04
-        cellInfo tmp;
-        return tmp.g;
-    }
-    return cellHash[u].g;
+    return g_values[u.i * map_width + u.j];
 }
 
 /* double Dstar::getRHS(state u)
@@ -204,15 +183,10 @@ double Dstar::getG(const state& u)
  */
 double Dstar::getRHS(const state& u)
 {
-
+    // TODO: remove. Why is this here? 
     if (u == s_goal)
         return 0;
-
-    if (cellHash.find(u) == cellHash.end()) {
-        cellInfo tmp; // return default value of cellInfo, line 04
-        return tmp.rhs;
-    }
-    return cellHash[u].rhs;
+    return rhs_values[u.i * map_width + u.j];
 }
 
 /* void Dstar::setG(state u, double g)
@@ -221,9 +195,7 @@ double Dstar::getRHS(const state& u)
  */
 void Dstar::setG(const state& u, double g)
 {
-
-    makeNewCell(u);
-    cellHash[u].g = g;
+    g_values[u.i * map_width + u.j] = g;
 }
 
 /* void Dstar::setRHS(state u, double rhs)
@@ -232,8 +204,7 @@ void Dstar::setG(const state& u, double g)
  */
 void Dstar::setRHS(const state& u, double rhs)
 {
-    makeNewCell(u);
-    cellHash[u].rhs = rhs;
+    rhs_values[u.i * map_width + u.j] = rhs;
 }
 
 /* double Dstar::eightCondist(state a, state b)
@@ -269,9 +240,8 @@ double Dstar::radiusFromStart(const state& start, const state& b)
  */
 int Dstar::computeShortestPath()
 {
-    list<state> s;
-    list<state> s2;
-    list<state>::iterator i;
+    std::vector<state> s;
+    std::vector<state> s2;
     double g_old;
     double min_over_succ;
     // std::cout << "openList empty check" << std::endl;
@@ -301,16 +271,11 @@ int Dstar::computeShortestPath()
             u = openList.top();
             // std::cout << " in lazy remove with state: " << u << " g " << getG(u) << " and rhs" << getRHS(u) << std::endl;
             double cur_key = keyHashCode(u);
-            // std::cout << "cur_key: " << cur_key << " openHash " << openHash[u] << std::endl;
             if (!isStateWithKeyInOpenList(u)) {
                 openList.pop();
                 // std::cout << "decided state is invalid, popped" << std::endl;
                 continue;
             }
-            // bool test = (getRHS(s_start) != getG(s_start));
-            // std::cout << "test: " << test << std::endl;
-            // if (!(u < s_start) && (!test))
-            //     return 2;
             break;
         }
         // std::cout << "finished lazy remove, starting with state: " << u << std::endl;
@@ -337,7 +302,7 @@ int Dstar::computeShortestPath()
             removeOpen(u);
             // line 19
             getPred(u, s);
-            for (i = s.begin(); i != s.end(); i++)
+            for (auto i = s.begin(); i != s.end(); i++)
             {
                 // line 20
                 setRHS(*i, std::min(getRHS(*i), cost(*i, u) + getG(u)));
@@ -356,7 +321,7 @@ int Dstar::computeShortestPath()
             //line 25
             getPred(u, s);
             s.push_back(u);
-            for (i = s.begin(); i != s.end(); i++)
+            for (auto i = s.begin(); i != s.end(); i++)
             {
                 // line 26
                 if (close(getRHS(*i), cost(*i, u) + g_old)) {
@@ -412,42 +377,27 @@ void Dstar::updateVertex(const state& u)
     }
 }
 
-/* void Dstar::insert(state u)
- * --------------------------
- * Inserts state u into openList and openHash.
- */
 void Dstar::insertOpen(const state& u)
 {
-    ds_oh::iterator cur;
     float csum;
 
-    cur = openHash.find(u);
+    float cur = keyHashes[u.i * map_width + u.j];
     csum = keyHashCode(u);
 
-    // std::cout << "inserting state: " << u << " with csum: " << csum << std::endl;
-    // std::cout << "openHash size: " << openHash.size() << std::endl;
-
-    // if the state is in the open hash table with the same key already
-    if ((cur != openHash.end()) && (close(csum,cur->second))) {
+    if (close(csum,cur)) {
         throw std::runtime_error("Inserting state already on the open list. insert shouldn't have been called.");
     }
 
-    openHash[u] = csum;
-    // std::cout << "for state " << u << " csum is " << openHash[u] << std::endl;
+    keyHashes[u.i * map_width + u.j] = csum;
     openList.push(u);
 }
 
-/* void Dstar::remove(state u)
- * --------------------------
- * Removes state u from openHash. The state is removed from the
- * openList lazilily (in replan) to save computation.
- */
 void Dstar::removeOpen(const state& u)
 {
-    ds_oh::iterator cur = openHash.find(u);
-    if (cur == openHash.end())
+    if (!isStateInOpenList(u)) {
         throw std::runtime_error("Removing state not on the open list");
-    openHash.erase(cur);
+    }
+    keyHashes[u.i * map_width + u.j] = std::numeric_limits<float>::infinity();
 }
 
 /* double Dstar::trueDist(state a, state b)
@@ -568,11 +518,10 @@ void Dstar::updateCell(int i, int j, double val)
     setMapCell(v, val);
     // line 40
     // since cost of a->b is the cost of cell b, only the directed edges x -> v need to be updated
-    list<state> pred;
+    std::vector<state> pred;
     getPred(v, pred);
-    list<state>::iterator u;
     double c_old, c_new;
-    for (u = pred.begin(); u != pred.end(); u++)
+    for (auto u = pred.begin(); u != pred.end(); u++)
     {
         // std::cout << "processing pred: " << *u << std::endl;
         // line 41
@@ -593,7 +542,7 @@ void Dstar::updateCell(int i, int j, double val)
             // line 46
             if (*u != s_goal) {
                 double min_over_succ = std::numeric_limits<double>::infinity();
-                list<state> succ;
+                std::vector<state> succ;
                 getPred(*u, succ);
                 for (auto sp = succ.begin(); sp != succ.end(); sp++) {
                     min_over_succ = std::min(min_over_succ, cost(*u, *sp) + getG(*sp));
@@ -612,9 +561,8 @@ void Dstar::updateCell(int i, int j, double val)
  * this is for an 8-way connected graph the list contains all the
  * neighbours for state u. Occupied neighbours are not added to the
  * list.
- * NOTE: changes the key for the state u
  */
-void Dstar::getPred(const state& uArg, list<state> &s)
+void Dstar::getPred(const state& uArg, std::vector<state> &s)
 {
     state u(uArg);
     s.clear();
@@ -623,28 +571,28 @@ void Dstar::getPred(const state& uArg, list<state> &s)
 
     u.i += 1;
     if (!occupied(u))
-        s.push_front(u);
+        s.push_back(u);
     u.j += 1;
     if (!occupied(u))
-        s.push_front(u);
+        s.push_back(u);
     u.i -= 1;
     if (!occupied(u))
-        s.push_front(u);
+        s.push_back(u);
     u.i -= 1;
     if (!occupied(u))
-        s.push_front(u);
+        s.push_back(u);
     u.j -= 1;
     if (!occupied(u))
-        s.push_front(u);
+        s.push_back(u);
     u.j -= 1;
     if (!occupied(u))
-        s.push_front(u);
+        s.push_back(u);
     u.i += 1;
     if (!occupied(u))
-        s.push_front(u);
+        s.push_back(u);
     u.i += 1;
     if (!occupied(u))
-        s.push_front(u);
+        s.push_back(u);
 }
 
 /* void Dstar::updateStart(int i, int j)
@@ -668,80 +616,28 @@ void Dstar::updateStart(int i, int j)
     }
 }
 
-/* void Dstar::updateGoal(int x, int y)
- * --------------------------
- * This is somewhat of a hack, to change the position of the goal we
- * first save all of the non-empty on the map, clear the map, move the
- * goal, and re-add all of non-empty cells. Since most of these cells
- * are not between the start and goal this does not seem to hurt
- * performance too much. Also it free's up a good deal of memory we
- * likely no longer use.
- */
-// void Dstar::updateGoal(int iArg, int jArg)
-// {
-
-//     list<pair<ipoint2, double>> toAdd;
-//     pair<ipoint2, double> tp;
-
-//     ds_ch::iterator iter;
-//     list<pair<ipoint2, double>>::iterator kk;
-
-//     for (iter = cellHash.begin(); iter != cellHash.end(); iter++)
-//     {
-//         if (!close(iter->second.cost, C1))
-//         {
-//             tp.first.i = iter->first.i;
-//             tp.first.j = iter->first.j;
-//             tp.second = iter->second.cost;
-//             toAdd.push_back(tp);
-//         }
-//     }
-
-//     cellHash.clear();
-//     openHash.clear();
-
-//     while (!openList.empty())
-//         openList.pop();
-
-//     k_m = 0;
-
-//     s_goal.i = iArg;
-//     s_goal.j = jArg;
-
-//     cellInfo tmp;
-//     tmp.g = tmp.rhs = 0;
-//     tmp.cost = C1;
-
-//     cellHash[s_goal] = tmp;
-
-//     tmp.g = tmp.rhs = heuristic(s_start, s_goal);
-//     tmp.cost = C1;
-//     cellHash[s_start] = tmp;
-//     s_start = calculateKey(s_start);
-
-//     s_last = s_start;
-
-//     for (kk = toAdd.begin(); kk != toAdd.end(); kk++)
-//     {
-//         updateCell(kk->first.i, kk->first.j, kk->second);
-//     }
-// }
 
 py::list Dstar::getGValues()
 {
     py::list output;
-    for (auto &s : cellHash)
+    for (auto i = 0; i < map_height; i++)
     {
-        output.append(py::make_tuple(s.first.i, s.first.j, s.second.g));
+        for (auto j = 0; j < map_width; j++)
+        {
+            output.append(py::make_tuple(i, j, getG(state{i, j})));
+        }
     }
     return output;
 }
 py::list Dstar::getRHSValues()
 {
     py::list output;
-    for (auto &s : cellHash)
+    for (auto i = 0; i < map_height; i++)
     {
-        output.append(py::make_tuple(s.first.i, s.first.j, s.second.rhs));
+        for (auto j = 0; j < map_width; j++)
+        {
+            output.append(py::make_tuple(i, j, getRHS(state{i, j})));
+        }
     }
     return output;
 }
@@ -793,7 +689,7 @@ bool Dstar::replan()
     if (edge_cost_changed) {
 
         int res = computeShortestPath();
-        printf("res: %d ols: %zu ohs: %zu tk: [%f %f] sk: [%f %f] sgr: (%f,%f)\n",res,openList.size(),openHash.size(),openList.top().k.first,openList.top().k.second, s_start.k.first, s_start.k.second,getRHS(s_start),getG(s_start));
+        printf("res: %d ols: %zu tk: [%f %f] sk: [%f %f] sgr: (%f,%f)\n",res,openList.size(),openList.top().k.first,openList.top().k.second, s_start.k.first, s_start.k.second,getRHS(s_start),getG(s_start));
         edge_cost_changed = false;
         if (res < 0)
         {
@@ -812,8 +708,7 @@ bool Dstar::replan()
 
     // build a path by greedily following successors
     // sort of line 34
-    list<state> n;
-    list<state>::iterator i;
+    std::vector<state> n;
     state cur = s_start;
     int max_iters = 10000000000;
     // std::cout << "goal: " << s_goal << " has g value " << getG(s_goal) << " and rhs " << getRHS(s_goal) << std::endl;
@@ -830,7 +725,7 @@ bool Dstar::replan()
         double cmin = std::numeric_limits<double>::infinity();
         double tmin = std::numeric_limits<double>::infinity();
         state smin;
-        for (i = n.begin(); i != n.end(); i++)
+        for (auto i = n.begin(); i != n.end(); i++)
         {
             double val = cost(cur, *i);
             // for breaking ties
