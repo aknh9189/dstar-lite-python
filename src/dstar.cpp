@@ -219,7 +219,7 @@ double Dstar::getRHS(const state& u)
  * --------------------------
  * Sets the G value for state u
  */
-void Dstar::setG(state u, double g)
+void Dstar::setG(const state& u, double g)
 {
 
     makeNewCell(u);
@@ -230,7 +230,7 @@ void Dstar::setG(state u, double g)
  * --------------------------
  * Sets the rhs value for state u
  */
-void Dstar::setRHS(state u, double rhs)
+void Dstar::setRHS(const state& u, double rhs)
 {
     makeNewCell(u);
     cellHash[u].rhs = rhs;
@@ -394,7 +394,7 @@ bool Dstar::close(double x, double y)
  * --------------------------
  * As per [S. Koenig, 2002]
  */
-void Dstar::updateVertex(state u)
+void Dstar::updateVertex(const state& u)
 {
     // line 07
     bool g_is_rhs = close(getG(u), getRHS(u));
@@ -416,7 +416,7 @@ void Dstar::updateVertex(state u)
  * --------------------------
  * Inserts state u into openList and openHash.
  */
-void Dstar::insertOpen(state u)
+void Dstar::insertOpen(const state& u)
 {
     ds_oh::iterator cur;
     float csum;
@@ -480,20 +480,21 @@ double Dstar::heuristic(const state& a, const state& b)
  * --------------------------
  * As per [S. Koenig, 2002]
  */
-state Dstar::calculateKey(state u)
+state Dstar::calculateKey(const state& u)
 {
     // line 01
-    double val = fmin(getRHS(u), getG(u));
-    u.k.first = val + heuristic(u, s_start) + k_m;
-    if (u.k.first > MAX_FIRST_KEY_VALUE) {
+    state s(u);
+    double val = fmin(getRHS(s), getG(s));
+    s.k.first = val + heuristic(s, s_start) + k_m;
+    if (s.k.first > MAX_FIRST_KEY_VALUE) {
         // to my knowledge, this should only ever happen to the start state
-        if (u != s_start) { 
+        if (s != s_start) { 
             throw std::runtime_error("k.first > MAX_FIRST_KEY_VALUE");
         }
     }
-    u.k.second = val;
+    s.k.second = val;
 
-    return u;
+    return s;
 }
 
 /* double Dstar::cost(state a, state b)
@@ -613,9 +614,9 @@ void Dstar::updateCell(int i, int j, double val)
  * list.
  * NOTE: changes the key for the state u
  */
-void Dstar::getPred(state u, list<state> &s)
+void Dstar::getPred(const state& uArg, list<state> &s)
 {
-
+    state u(uArg);
     s.clear();
     u.k.first = -1;
     u.k.second = -1;
