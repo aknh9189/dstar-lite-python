@@ -710,7 +710,7 @@ bool Dstar::replan()
     // sort of line 34
     std::vector<state> n;
     state cur = s_start;
-    int max_iters = 10000000000;
+    int max_iters = 10;
     // std::cout << "goal: " << s_goal << " has g value " << getG(s_goal) << " and rhs " << getRHS(s_goal) << std::endl;
     while (cur != s_goal)
     {

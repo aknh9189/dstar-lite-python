@@ -1,10 +1,15 @@
 import dstar_lite
 import pyastar2d
 import time 
+import faulthandler
 import numpy as np 
 import matplotlib.pyplot as plt
 
+faulthandler.enable()
+
 def plot_values(valueArg):
+    if len(valueArg) == 0:
+        return
     if len(valueArg[0]) == 3:
         fig, ax = plt.subplots()
     elif len(valueArg[0]) == 4:
@@ -69,6 +74,11 @@ def generate_map(shape):
 def perform_planning_iteration(dstar, current_state, goal, current_map, indexes, values, plot=False):
     t1 = time.time()
     dstar.updateStart(*current_state)
+    # for i in range(len(indexes)):
+        # print("index", indexes[i], "value", values[i], "current value", current_map[indexes[i][0], indexes[i][1]])
+    before_g = dstar.getGValues()
+    before_rhs = dstar.getRHSValues()
+    before_keys = dstar.getKeys()
     if len(indexes) > 0:
         indexes = np.asarray(indexes, dtype=np.int32)
         values = np.asarray(values)
@@ -76,6 +86,18 @@ def perform_planning_iteration(dstar, current_state, goal, current_map, indexes,
         dstar.updateCells(indexes, values)
     print("replanning")
     dstar_success = dstar.replan()
+    if not dstar_success:
+        plot_values(before_g)
+        plot_values(before_rhs)
+        plot_values(before_keys) 
+        print(before_keys)
+        plot_values(dstar.getGValues())
+        plot_values(dstar.getRHSValues())
+        plot_values(dstar.getKeys())
+        fig, ax = plt.subplots()
+        ax.imshow(current_map, cmap='gray', interpolation='none')
+        print("Dstar replan failed")
+        plt.show()
     print("getting path")
     dstar_plan = dstar.getPath()
     print("done with dstar")
@@ -108,6 +130,7 @@ def change_costs_around_state(state, goal, valid_map, radius=100):
             if ((i-state[0])**2 + (j-state[1])**2) < radius**2:
                 indexes.append((i,j))
                 new_value = np.random.rand() * 5 + 1
+                print("changing value at", i,j, "from", valid_map[i,j], "to", new_value)
                 values.append(new_value)
                 valid_map[i,j] = new_value
 
@@ -122,33 +145,39 @@ def test_against_paper_example():
     dstar = dstar_lite.Dstar(paper_map, 10000, scale_diag_cost=False)
     dstar.init(*start, *goal)
     perform_planning_iteration(dstar, start, goal, paper_map, [], [], True)
-    # dstar.updateStart(2,0)
-    # dstar.updateCells(np.asarray((3,1), dtype=np.int32).reshape(1,2), np.asarray([np.inf]))
-    # plot_values(dstar.getGValues())
-    # plot_values(dstar.getRHSValues())
-    # plot_values(dstar.getKeys())
-    # plt.show()
-    perform_planning_iteration(dstar, (2,0), goal, paper_map, [(3,1)], [np.inf], True)
+    dstar.updateStart(2,0)
+    dstar.updateCells(np.asarray((3,1), dtype=np.int32).reshape(1,2), np.asarray([np.inf]))
+    plot_values(dstar.getGValues())
+    plot_values(dstar.getRHSValues())
+    plot_values(dstar.getKeys())
+    perform_planning_iteration(dstar, (2,0), goal, paper_map, [], [], True)
 
 
+# test_against_paper_example()
 
-size=5000
+size=3
 start = (0,0)
-np.random.seed(0)
+# np.random.seed(5)
 goal = (size-1, size-1)
 valid_map = generate_map((size,size))
+print("Generated map, starting test")
 t1 = time.time()
 dstar = dstar_lite.Dstar(valid_map, size*size*10, scale_diag_cost=True)
 dstar.init(*start, *goal)
+# dstar.replan()
 t2 = time.time()
 print("Dstar init time", t2-t1)
-perform_planning_iteration(dstar, start, goal, valid_map, [], [], True)
-for i in range(10):
+perform_planning_iteration(dstar, start, goal, valid_map, [], [], False)
+for i in range(100000):
+    print(i)
     next_state = [np.random.randint(0,size), np.random.randint(0,size)]
     while True:
         if valid_map[next_state[0], next_state[1]] < np.inf:
             break
         next_state = [np.random.randint(0,size), np.random.randint(0,size)]
-    valid_map, indexes, values = change_costs_around_state(start, goal, valid_map, 30)
-    # perform_planning_iteration(start, valid_map, indexes, values, i > -10)
-    perform_planning_iteration(dstar, next_state, goal, valid_map, [], [], i > -10)
+    valid_map, indexes, values = valid_map, [], []
+    print(next_state)
+    print(valid_map)
+    valid_map, indexes, values = change_costs_around_state(next_state, goal, valid_map, 2)
+    perform_planning_iteration(dstar, next_state, goal, valid_map, indexes, values, False)
+    # perform_planning_iteration(dstar, next_state, goal, valid_map, [], [], True)
