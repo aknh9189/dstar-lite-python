@@ -96,7 +96,9 @@ class Dstar
 {
 
 public:
-    Dstar(const py::array_t<double, py::array::c_style>& mapArg);
+    Dstar(const py::array_t<double, py::array::c_style>& mapArg, 
+          int maxStepsArg,
+          bool scale_diag_cost = true);
     void reset();
     void init(int sI, int sJ, int gI, int gJ);
     void updateStart(int i, int j);
@@ -110,8 +112,11 @@ public:
 
     py::list getPath();
     py::list getGValues();
+    py::list getRHSValues();
+    py::list getKeys();
 
 private:
+    double diag_cost_scale;
     bool init_called;
     bool edge_cost_changed;
     py::array_t<double> map;
@@ -136,6 +141,7 @@ private:
     void setG(state u, double g);
     void setRHS(state u, double rhs);
     double eightCondist(const state& a, const state& b);
+    double radiusFromStart(const state& start, const state& b);
     int computeShortestPath();
     void updateVertex(state u);
     void insertOpen(state u);
@@ -146,7 +152,8 @@ private:
     void getPred(state u, list<state> &s);
     double cost(const state& a, const state& b);
     bool occupied(const state& u);
-    bool isInOpenList(const state& u);
+    bool isStateInOpenList(const state& u);
+    bool isStateWithKeyInOpenList(const state& u);
     bool isStateInMap(const state& u);
     float keyHashCode(const state& u);
 };

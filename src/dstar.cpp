@@ -19,10 +19,16 @@ std::ostream& operator<<(std::ostream &os, const state& s)
  * Each cell contains the cost of moving through it. So the heuristic is valid all cells must have a cost >= 1
  * Untraversable cells have a cost of infinity
  */
-Dstar::Dstar(const py::array_t<double, py::array::c_style>& mapArg)
+Dstar::Dstar(const py::array_t<double, py::array::c_style>& mapArg, int maxStepsArg, bool scale_diag_cost)
 {
-    maxSteps = 999999999; // node expansions before we give up
+    maxSteps = maxStepsArg; // node expansions before we give up
     init_called = false;
+
+    if (scale_diag_cost) {
+        diag_cost_scale = sqrt(2);
+    } else {
+        diag_cost_scale = 1;
+    }
 
     // create a copy of the numpy array
     auto buffer = mapArg.request();
@@ -78,19 +84,20 @@ float Dstar::keyHashCode(const state& u)
     return static_cast<float>(u.k.first + MAX_FIRST_KEY_VALUE * u.k.second);
 }
 
-/* bool Dstar::isInOpenList(state u)
- * --------------------------
- * Returns true if state u is on the open list or not by checking if
- * it is in the hash table.
- */
-bool Dstar::isInOpenList(const state& u)
+bool Dstar::isStateInOpenList(const state& u)
 {
-
     ds_oh::iterator cur = openHash.find(u);
     if (cur == openHash.end()) {
         return false;
     }
     return true;
+}
+bool Dstar::isStateWithKeyInOpenList(const state& u) {
+    ds_oh::iterator cur = openHash.find(u);
+    if (cur == openHash.end()) {
+        return false;
+    }
+    return close(cur->second, keyHashCode(u));
 }
 
 bool Dstar::isStateInMap(const state& u) {
@@ -146,6 +153,7 @@ void Dstar::init(int sI, int sJ, int gI, int gJ)
     s_start.j = sJ;
     s_goal.i = gI;
     s_goal.j = gJ;
+    s_last = s_start; // line 29
     if (!isStateInMap(s_start) || !isStateInMap(s_goal))
     {
         throw std::runtime_error("Start or goal is outside of the map");
@@ -245,6 +253,11 @@ double Dstar::eightCondist(const state& a, const state& b)
     return ((M_SQRT2 - 1.0) * min + max);
 }
 
+double Dstar::radiusFromStart(const state& start, const state& b)
+{
+    return std::max(fabs(start.i - b.i), fabs(start.j - b.j));
+}
+
 /* int Dstar::computeShortestPath()
  * --------------------------
  * As per [S. Koenig, 2002] except for 2 main modifications:
@@ -286,8 +299,10 @@ int Dstar::computeShortestPath()
             if (openList.empty())
                 return 1;
             u = openList.top();
-            // std::cout << " in lazy remove with state: " << u << std::endl;
-            if (!isInOpenList(u)) {
+            // std::cout << " in lazy remove with state: " << u << " g " << getG(u) << " and rhs" << getRHS(u) << std::endl;
+            double cur_key = keyHashCode(u);
+            // std::cout << "cur_key: " << cur_key << " openHash " << openHash[u] << std::endl;
+            if (!isStateWithKeyInOpenList(u)) {
                 openList.pop();
                 // std::cout << "decided state is invalid, popped" << std::endl;
                 continue;
@@ -383,8 +398,8 @@ void Dstar::updateVertex(state u)
 {
     // line 07
     bool g_is_rhs = close(getG(u), getRHS(u));
-    bool is_in_open = isInOpenList(u);
-    // std::cout << " in updateVertex with state: " << u << " g_is_rhs: " << g_is_rhs << " is_in_open: " << is_in_open << std::endl;
+    bool is_in_open = isStateInOpenList(u);
+    // std::cout << " in updateVertex with state: " << u << " g_is_rhs: " << g_is_rhs << " is_in_open: " << is_in_open << " rhs/g are " << getRHS(u) << "/" << getG(u) << std::endl;
     if (!g_is_rhs && is_in_open) {
         removeOpen(u);
         insertOpen(calculateKey(u));
@@ -418,6 +433,7 @@ void Dstar::insertOpen(state u)
     }
 
     openHash[u] = csum;
+    // std::cout << "for state " << u << " csum is " << openHash[u] << std::endl;
     openList.push(u);
 }
 
@@ -453,7 +469,11 @@ double Dstar::trueDist(const state& a, const state& b)
 double Dstar::heuristic(const state& a, const state& b)
 {   
     // return 0.0;
-    return eightCondist(a, b);
+    if (diag_cost_scale > 1) {
+        return eightCondist(a, b);
+    } else {
+        return radiusFromStart(a, b);
+    }    
 }
 
 /* state Dstar::calculateKey(state u)
@@ -491,8 +511,30 @@ double Dstar::cost(const state& a, const state& b)
     double scale = 1;
 
     if (id + jd > 1)
-        scale = M_SQRT2;
+        scale = diag_cost_scale;
+    // NOTE: if this changes, make sure to update line 43-45
     return scale * getMapCell(b);
+}
+
+void Dstar::updateCells(const py::array_t<int>& indexes, const py::array_t<double>& values) {
+    // std::cout << "############ updateCells called" << std::endl;
+    auto indexes_buffer = indexes.request();
+    auto values_buffer = values.request();
+    auto indexes_r = indexes.unchecked<2>();
+    auto values_r = values.unchecked<1>();
+    if (indexes_buffer.shape[0] != values_buffer.shape[0]) {
+        throw std::runtime_error("indexes and values must have the same length");
+    }
+    // std::cout << "starting to update cells" << std::endl;
+    for (py::ssize_t i = 0; i < indexes_buffer.shape[0]; i++)
+    {
+        int index_i = indexes_r(i, 0);
+        int index_j = indexes_r(i, 1);
+        double value = values_r(i);
+        // std::cout << "updating cell: " << index_i << " " << index_j << " with value: " << value << std::endl;
+        updateCell(index_i, index_j, value);
+    }
+    // std::cout << "finished updating cells" << std::endl;
 }
 /* void Dstar::updateCell(int i, int j, double val)
  * --------------------------
@@ -501,18 +543,67 @@ double Dstar::cost(const state& a, const state& b)
 void Dstar::updateCell(int i, int j, double val)
 {
 
-    state u;
+    state v;
 
-    u.i = i;
-    u.j = j;
+    v.i = i;
+    v.j = j;
 
-    if ((u == s_start) || (u == s_goal))
+    double old_cell_value = getMapCell(v);
+    if (close(old_cell_value, val)) {
         return;
-    throw std::runtime_error("updateCell not implemented");
+    }
+
+    if ((v == s_start) || (v == s_goal)) {
+        return;
+    }
+
+    // line 38
+    // std::cout << "increasint k_m from " << k_m << " by " << heuristic(s_last, s_start) << std::endl;
+    k_m = k_m + heuristic(s_last, s_start); // no update if s_last hasn't changed
+    // line 39
+    s_last = s_start;
+
+    // line 42
+    setMapCell(v, val);
+    // line 40
+    // since cost of a->b is the cost of cell b, only the directed edges x -> v need to be updated
+    list<state> pred;
+    getPred(v, pred);
+    list<state>::iterator u;
+    double c_old, c_new;
+    for (u = pred.begin(); u != pred.end(); u++)
+    {
+        // std::cout << "processing pred: " << *u << std::endl;
+        // line 41
+        c_new = cost(*u, v);
+        c_old = old_cell_value;
+        if (abs(u->i - v.i) + abs(u->j - v.j) > 1) {
+            c_new *= diag_cost_scale;
+        }
+        // std::cout << "c_old: " << c_old << " c_new: " << c_new << std::endl;
+        // line 43
+        if (c_old > c_new) {
+            // line 44
+            // std::cout << "c_old is greater than c_new" << std::endl;
+            setRHS(*u, std::min(getRHS(*u), c_new + getG(v)));
+        // line 45
+        } else if (close(getRHS(*u), c_old + getG(v))) {
+            // std::cout << "rhs is close to c_old + g" << std::endl;
+            // line 46
+            if (*u != s_goal) {
+                double min_over_succ = std::numeric_limits<double>::infinity();
+                list<state> succ;
+                getPred(*u, succ);
+                for (auto sp = succ.begin(); sp != succ.end(); sp++) {
+                    min_over_succ = std::min(min_over_succ, cost(*u, *sp) + getG(*sp));
+                }
+                setRHS(*u, min_over_succ);
+            }
+        }
+        updateVertex(*u);
+    }
+
     edge_cost_changed = true;
-    makeNewCell(u);
-    setMapCell(u, val);
-    updateVertex(u);
 }
 /* void Dstar::getPred(state u,list<state> &s)
  * --------------------------
@@ -566,6 +657,7 @@ void Dstar::updateStart(int i, int j)
         throw std::runtime_error("init must be called before updateStart");
     }
 
+    // line 35
     s_start.i = i;
     s_start.j = j;
 
@@ -573,11 +665,6 @@ void Dstar::updateStart(int i, int j)
     {
         throw std::runtime_error("Start is outside of the map");
     }
-
-    k_m += heuristic(s_last, s_start);
-
-    s_start = calculateKey(s_start);
-    s_last = s_start;
 }
 
 /* void Dstar::updateGoal(int x, int y)
@@ -648,6 +735,41 @@ py::list Dstar::getGValues()
     }
     return output;
 }
+py::list Dstar::getRHSValues()
+{
+    py::list output;
+    for (auto &s : cellHash)
+    {
+        output.append(py::make_tuple(s.first.i, s.first.j, s.second.rhs));
+    }
+    return output;
+}
+py::list Dstar::getKeys()
+{
+    std::vector<state> states;
+    while (!openList.empty())
+    {
+        state tmp = openList.top();
+        if (!isStateWithKeyInOpenList(tmp)) {
+            openList.pop();
+            continue;
+        }
+
+        states.push_back(tmp);
+        removeOpen(tmp);
+        openList.pop();
+    }
+    py::list output;
+    for (auto &s : states)
+    {
+        output.append(py::make_tuple(s.i, s.j, s.k.first, s.k.second));
+    }
+    for (auto &s : states)
+    {
+        insertOpen(s);
+    }
+    return output;
+}
 
 /* bool Dstar::replan()
  * --------------------------
@@ -692,6 +814,7 @@ bool Dstar::replan()
     list<state> n;
     list<state>::iterator i;
     state cur = s_start;
+    int max_iters = 10000000000;
     // std::cout << "goal: " << s_goal << " has g value " << getG(s_goal) << " and rhs " << getRHS(s_goal) << std::endl;
     while (cur != s_goal)
     {
@@ -732,6 +855,11 @@ bool Dstar::replan()
         n.clear();
         cur = smin;
         // std::cout << "cur: " << cur << " with g value " << getG(cur) <<  std::endl;
+        if (max_iters-- < 0)
+        {
+            fprintf(stderr, "NO PATH TO GOAL\n");
+            return false;
+        }
     }
     path.push_back(s_goal);
     return true;
