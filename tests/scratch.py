@@ -76,7 +76,7 @@ def get_cost_from_path(path, mapArg):
     path = list(reversed(path))
     for i in range(len(path)-1):
         scale = 1
-        if abs(path[i-1][0] - path[i][0]) + abs(path[i-1][1] - path[i][1]) > 1:
+        if abs(path[i+1][0] - path[i][0]) + abs(path[i+1][1] - path[i][1]) > 1:
             scale = np.sqrt(2)
         cost += mapArg[path[i][0], path[i][1]] * scale
     return cost
@@ -104,20 +104,26 @@ def perform_planning_iteration(dstar, current_state, goal, current_map, indexes,
     if len(indexes) > 0:
         indexes = np.asarray(indexes, dtype=np.int32)
         values = np.asarray(values)
-        print("updating cells")
+        # print("updating cells")
         dstar.updateCells(indexes, values)
-    print("replanning")
+        # print("AFTER FIRST CALL TO update map cells")
+        # print("G\n", assemble_values(dstar.getGValues(), valid_map.shape))
+        # print("RHS\n", assemble_values(dstar.getRHSValues(), valid_map.shape))
+        # print("First keys\n", assemble_values(dstar.getKeys(), valid_map.shape)[:,:,0])
+        # print("Second keys\n", assemble_values(dstar.getKeys(), valid_map.shape)[:,:,1])
+        # print("replanning")
+        # assert False
     dstar_success = dstar.replan()
     if not dstar_success:
-        plot_values(before_g)
-        plot_values(before_rhs)
-        plot_values(before_keys) 
-        print(before_keys)
-        plot_values(dstar.getGValues())
-        plot_values(dstar.getRHSValues())
-        plot_values(dstar.getKeys())
-        fig, ax = plt.subplots()
-        ax.imshow(current_map, cmap='gray', interpolation='none')
+        # plot_values(before_g)
+        # plot_values(before_rhs)
+        # plot_values(before_keys) 
+        # print(before_keys)
+        # plot_values(dstar.getGValues())
+        # plot_values(dstar.getRHSValues())
+        # plot_values(dstar.getKeys())
+        # fig, ax = plt.subplots()
+        # ax.imshow(current_map, cmap='gray', interpolation='none')
         print("Dstar replan failed")
         return -1
         # plt.show()
@@ -181,8 +187,8 @@ def test_against_paper_example():
 
 best_seed = None
 best_iter_seed = np.inf
-for seed_option in [20]:
-# for seed_option in range(100):
+# for seed_option in [591]:
+for seed_option in range(1000):
     size=3
     start = (0,0)
     plot_things = False
@@ -194,39 +200,43 @@ for seed_option in [20]:
     print("initial map is", valid_map)
     print("start is ", start)
     print("goal is ", goal)
-    print("Generated map, starting test")
+    # print("Generated map, starting test")
     t1 = time.time()
     dstar = dstar_lite.Dstar(valid_map, size*size*10, scale_diag_cost=True)
     dstar.init(*start, *goal)
     t2 = time.time()
-    print("Dstar init time", t2-t1)
-    perform_planning_iteration(dstar, start, goal, valid_map, [], [], False)
-    print("AFTER FIRST CALL TO CALCULATESHORTESTPATH")
-    print("G\n", assemble_values(dstar.getGValues(), valid_map.shape))
-    print("RHS\n", assemble_values(dstar.getRHSValues(), valid_map.shape))
-    print("First keys\n", assemble_values(dstar.getKeys(), valid_map.shape)[:,:,0])
-    print("Second keys\n", assemble_values(dstar.getKeys(), valid_map.shape)[:,:,1])
-    print("Path\n", dstar.getPath())
-    for i in range(10):
+    # print("Dstar init time", t2-t1)
+    perform_planning_iteration(dstar, start, goal, valid_map, [], [], plot_things)
+    # print("AFTER FIRST CALL TO CALCULATESHORTESTPATH")
+    # print("G\n", assemble_values(dstar.getGValues(), valid_map.shape))
+    # print("RHS\n", assemble_values(dstar.getRHSValues(), valid_map.shape))
+    # print("First keys\n", assemble_values(dstar.getKeys(), valid_map.shape)[:,:,0])
+    # print("Second keys\n", assemble_values(dstar.getKeys(), valid_map.shape)[:,:,1])
+    # print("Path\n", dstar.getPath())
+    for i in range(100):
         print(i)
-        # next_state = dstar.getPath()[1]
-        next_state = [np.random.randint(0,size), np.random.randint(0,size)]
-        while True:
-            if valid_map[next_state[0], next_state[1]] < np.inf:
-                break
-            next_state = [np.random.randint(0,size), np.random.randint(0,size)]
+        if len(dstar.getPath()) <= 2:
+            break
+        next_state = dstar.getPath()[1]
+        # next_state = [np.random.randint(0,size), np.random.randint(0,size)]
+        # while True:
+        #     if valid_map[next_state[0], next_state[1]] < np.inf:
+        #         break
+        #     next_state = [np.random.randint(0,size), np.random.randint(0,size)]
         valid_map, indexes, values = valid_map, [], []
-        print("NEXT STATE", next_state)
-        print(valid_map)
+        # print("NEXT STATE", next_state)
+        # print(valid_map)
         valid_map, indexes, values = change_costs_around_state(next_state, goal, valid_map, 2)
-        print("CHANGES ARE ", indexes, values)
-        assert False
-        result = perform_planning_iteration(dstar, next_state, goal, valid_map, indexes, values, False)
+        # print("CHANGES ARE ", indexes, values)
+
+
+        result = perform_planning_iteration(dstar, next_state, goal, valid_map, indexes, values, plot_things)
         if result == -1:
             if i < best_iter_seed:
                 best_iter_seed = i
                 best_seed = seed_option
-            break
+            print(best_seed)
+            assert False
 
     del dstar
 

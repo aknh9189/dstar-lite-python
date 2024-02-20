@@ -249,10 +249,8 @@ int Dstar::computeShortestPath()
         return 1;
     // std::cout << "openList not empty" << std::endl;
     int k = 0;
-    // line 10
-    while ((!openList.empty()) &&
-        ((openList.top() < (s_start = calculateKey(s_start))) ||
-           (getRHS(s_start) > getG(s_start))))
+
+    while (!openList.empty()) 
     {
         // std::cout << "starting while loop" << std::endl;
 
@@ -270,7 +268,6 @@ int Dstar::computeShortestPath()
                 return 1;
             u = openList.top();
             // std::cout << " in lazy remove with state: " << u << " g " << getG(u) << " and rhs" << getRHS(u) << std::endl;
-            double cur_key = keyHashCode(u);
             if (!isStateWithKeyInOpenList(u)) {
                 openList.pop();
                 // std::cout << "decided state is invalid, popped" << std::endl;
@@ -278,7 +275,13 @@ int Dstar::computeShortestPath()
             }
             break;
         }
-        // std::cout << "finished lazy remove, starting with state: " << u << std::endl;
+        std::cout << "finished lazy remove, starting with state: " << u << std::endl;
+
+        // recheck while loop conditions now that junk has been removed
+        // line 10
+        if (!((openList.top() < calculateKey(s_start)) || (getRHS(s_start) > getG(s_start)))) {
+            break;
+        }
 
         // line 12
         state k_old = u;
@@ -286,16 +289,17 @@ int Dstar::computeShortestPath()
         state k_new = calculateKey(u);
         // line 14
         if (k_old < k_new)
-        { // u is out of date
-            // std::cout << "u is out of date" << std::endl;
+        { 
+            std::cout << "\tu is out of date" << std::endl;
+            std::cout << "\tupdating key from " << u << " to " << k_new << " which has comp result " << (k_old < k_new) << std::endl;
             // line 15
             removeOpen(u);
             insertOpen(k_new);
         }
         // line 16
         else if (getG(u) > getRHS(u))
-        { // needs update (got better)
-            // std::cout << "needs update (got better)" << std::endl;
+        { 
+            std::cout << "\texpanding state " << u << std::endl;
             // line 17
             setG(u, getRHS(u));
             // line 18
@@ -308,12 +312,13 @@ int Dstar::computeShortestPath()
                 setRHS(*i, std::min(getRHS(*i), cost(*i, u) + getG(u)));
                 // line 21
                 updateVertex(*i);
+                std::cout << "\t\t" << *i << " with rhs " << std::min(getRHS(*i), cost(*i, u) + getG(u)) << std::endl;
             }
         }
         // line 22
         else
         { // g <= rhs, state has got worse
-            // std::cout << "g <= rhs, state has got worse" << std::endl;
+            std::cout << "\tg <= rhs, state has got worse. Setting g to inf and updating self and pred" << std::endl;
             // line 23
             g_old = getG(u);
             // line 24
@@ -336,6 +341,7 @@ int Dstar::computeShortestPath()
                     }
                 }
                 // line 28
+                std::cout << "\t\t" << *i << " with rhs " << getRHS(*i) << std::endl;
                 updateVertex(*i);
             }
         }
@@ -364,10 +370,13 @@ void Dstar::updateVertex(const state& u)
     // line 07
     bool g_is_rhs = close(getG(u), getRHS(u));
     bool is_in_open = isStateInOpenList(u);
-    // std::cout << " in updateVertex with state: " << u << " g_is_rhs: " << g_is_rhs << " is_in_open: " << is_in_open << " rhs/g are " << getRHS(u) << "/" << getG(u) << std::endl;
+    // std::cout << " in updateVertex with state: " << calculateKey(u) << " g_is_rhs: " << g_is_rhs << " is_in_open: " << is_in_open << " rhs/g are " << getRHS(u) << "/" << getG(u) << std::endl;
     if (!g_is_rhs && is_in_open) {
-        removeOpen(u);
-        insertOpen(calculateKey(u));
+        // don't re-insert if the key hasn't changed
+        if (!isStateWithKeyInOpenList(calculateKey(u))) {
+            removeOpen(u);
+            insertOpen(calculateKey(u));
+        }
     } else if (!g_is_rhs && !is_in_open) {
         // line 08
         insertOpen(calculateKey(u));
@@ -482,10 +491,10 @@ void Dstar::updateCells(const py::array_t<int>& indexes, const py::array_t<doubl
         int index_i = indexes_r(i, 0);
         int index_j = indexes_r(i, 1);
         double value = values_r(i);
-        // std::cout << "updating cell: " << index_i << " " << index_j << " with value: " << value << std::endl;
+        std::cout << "########## updating cell: " << index_i << " " << index_j << " with value: " << value << std::endl;
         updateCell(index_i, index_j, value);
     }
-    // std::cout << "finished updating cells" << std::endl;
+    std::cout << "finished updating cells" << std::endl;
 }
 /* void Dstar::updateCell(int i, int j, double val)
  * --------------------------
@@ -523,22 +532,22 @@ void Dstar::updateCell(int i, int j, double val)
     double c_old, c_new;
     for (auto u = pred.begin(); u != pred.end(); u++)
     {
-        // std::cout << "processing pred: " << *u << std::endl;
+        std::cout << "PROCESSING EDGE: " << u->i << "," << u->j << "->" << v.i << "," << v.j << std::endl;
         // line 41
         c_new = cost(*u, v);
         c_old = old_cell_value;
         if (abs(u->i - v.i) + abs(u->j - v.j) > 1) {
-            c_new *= diag_cost_scale;
+            c_old *= diag_cost_scale;
         }
-        // std::cout << "c_old: " << c_old << " c_new: " << c_new << std::endl;
+        std::cout << "\tc_old: " << c_old << " c_new: " << c_new << std::endl;
         // line 43
         if (c_old > c_new) {
             // line 44
-            // std::cout << "c_old is greater than c_new" << std::endl;
+            std::cout << "\tc_old is greater than c_new. RHS is updating to " << std::min(getRHS(*u), c_new + getG(v)) << " from " << getRHS(*u) << std::endl;
             setRHS(*u, std::min(getRHS(*u), c_new + getG(v)));
         // line 45
         } else if (close(getRHS(*u), c_old + getG(v))) {
-            // std::cout << "rhs is close to c_old + g" << std::endl;
+            std::cout << "\trhs is close to c_old + g" << std::endl;
             // line 46
             if (*u != s_goal) {
                 double min_over_succ = std::numeric_limits<double>::infinity();
@@ -546,9 +555,13 @@ void Dstar::updateCell(int i, int j, double val)
                 getPred(*u, succ);
                 for (auto sp = succ.begin(); sp != succ.end(); sp++) {
                     min_over_succ = std::min(min_over_succ, cost(*u, *sp) + getG(*sp));
+                    std::cout << "\t\t succ " << *sp << " with cost " << cost(*u, *sp) << " and g " << getG(*sp) << std::endl;
                 }
+                std::cout << "\tsetting rhs to min_over_succ: " << min_over_succ << " from " << getRHS(*u) << std::endl;
                 setRHS(*u, min_over_succ);
             }
+        } else {
+            std::cout << "\t no action taken" << std::endl;
         }
         updateVertex(*u);
     }
@@ -570,29 +583,69 @@ void Dstar::getPred(const state& uArg, std::vector<state> &s)
     u.k.second = -1;
 
     u.i += 1;
-    if (!occupied(u))
+    // std::cout << "checking state " << u << "..";
+    if (!occupied(u)) {
         s.push_back(u);
+        // std::cout << "valid" << std::endl;
+    } else {
+        // std::cout << "INVALID" << std::endl;
+    }
     u.j += 1;
-    if (!occupied(u))
+    // std::cout << "checking state " << u << "..";
+    if (!occupied(u)) {
         s.push_back(u);
+        // std::cout << "valid" << std::endl;
+    } else {
+        // std::cout << "INVALID" << std::endl;
+    }
     u.i -= 1;
-    if (!occupied(u))
+    // std::cout << "checking state " << u << "..";
+    if (!occupied(u)) {
         s.push_back(u);
+        // std::cout << "valid" << std::endl;
+    } else {
+        // std::cout << "INVALID" << std::endl;
+    }
     u.i -= 1;
-    if (!occupied(u))
+    // std::cout << "checking state " << u << "..";
+    if (!occupied(u)) {
         s.push_back(u);
+        // std::cout << "valid" << std::endl;
+    } else {
+        // std::cout << "INVALID" << std::endl;
+    }
     u.j -= 1;
-    if (!occupied(u))
+    // std::cout << "checking state " << u << "..";
+    if (!occupied(u)) {
         s.push_back(u);
+        // std::cout << "valid" << std::endl;
+    } else {
+        // std::cout << "INVALID" << std::endl;
+    }
     u.j -= 1;
-    if (!occupied(u))
+    // std::cout << "checking state " << u << "..";
+    if (!occupied(u)) { 
         s.push_back(u);
+        // std::cout << "valid" << std::endl;
+    } else {
+        // std::cout << "INVALID" << std::endl;
+    }
     u.i += 1;
-    if (!occupied(u))
+    // std::cout << "checking state " << u << "..";
+    if (!occupied(u)) { 
         s.push_back(u);
+        // std::cout << "valid" << std::endl;
+    } else {
+        // std::cout << "INVALID" << std::endl;
+    }
     u.i += 1;
-    if (!occupied(u))
+    // std::cout << "checking state " << u << "..";
+    if (!occupied(u)) {
         s.push_back(u);
+        // std::cout << "valid" << std::endl;
+    } else {
+        // std::cout << "INVALID" << std::endl;
+    }
 }
 
 /* void Dstar::updateStart(int i, int j)
@@ -710,7 +763,7 @@ bool Dstar::replan()
     // sort of line 34
     std::vector<state> n;
     state cur = s_start;
-    int max_iters = 10;
+    int max_iters = 1000000;
     // std::cout << "goal: " << s_goal << " has g value " << getG(s_goal) << " and rhs " << getRHS(s_goal) << std::endl;
     while (cur != s_goal)
     {

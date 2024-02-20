@@ -41,20 +41,11 @@ public:
 
     bool operator>(const state &s2) const
     {
-        if (k.first - 0.00001 > s2.k.first)
+        if (k.first - 0.000001 > s2.k.first)
             return true;
-        else if (k.first < s2.k.first - 0.00001)
+        else if (k.first < s2.k.first - 0.000001)
             return false;
-        return k.second > s2.k.second;
-    }
-
-    bool operator<=(const state &s2) const
-    {
-        if (k.first < s2.k.first)
-            return true;
-        else if (k.first > s2.k.first)
-            return false;
-        return k.second < s2.k.second + 0.00001;
+        return (k.second - 0.000001) > s2.k.second;
     }
 
     bool operator<(const state &s2) const
@@ -63,7 +54,7 @@ public:
             return true;
         else if (k.first - 0.000001 > s2.k.first)
             return false;
-        return k.second < s2.k.second;
+        return (k.second + 0.000001) < s2.k.second;
     }
     friend std::ostream& operator<<(std::ostream &os, const state& s);
 
@@ -89,8 +80,6 @@ public:
 };
 
 typedef priority_queue<state, vector<state>, greater<state>> ds_pq;
-typedef unordered_map<state, cellInfo, state_hash, equal_to<state>> ds_ch; 
-typedef unordered_map<state, float, state_hash, equal_to<state>> ds_oh;
 
 class Dstar
 {
