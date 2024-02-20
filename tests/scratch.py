@@ -7,6 +7,28 @@ import matplotlib.pyplot as plt
 
 faulthandler.enable()
 
+def assemble_values(value_list, shape = None):
+    if shape is None:
+        max_i, max_j = 0,0
+        for item in value_list:
+            i,j = item[:2] 
+            max_i = max(max_i, i)
+            max_j = max(max_j, j)
+        shape = (max_i+1, max_j+1)
+    output = np.ones(shape) * np.inf
+    if len(value_list[0]) == 4:
+        # add a new axis for the second value
+        output = np.stack([output, np.ones(shape) * np.inf], axis=-1)
+    for item in value_list:
+        if len(item) == 3:
+            i,j,value = item
+            output[i,j] = value
+        elif len(item) == 4:
+            i,j,value1,value2 = item
+            output[i,j,0] = value1
+            output[i,j,1] = value2
+    return output
+
 def plot_values(valueArg):
     if len(valueArg) == 0:
         return
@@ -97,7 +119,8 @@ def perform_planning_iteration(dstar, current_state, goal, current_map, indexes,
         fig, ax = plt.subplots()
         ax.imshow(current_map, cmap='gray', interpolation='none')
         print("Dstar replan failed")
-        plt.show()
+        return -1
+        # plt.show()
     print("getting path")
     dstar_plan = dstar.getPath()
     print("done with dstar")
@@ -130,6 +153,7 @@ def change_costs_around_state(state, goal, valid_map, radius=100):
             if ((i-state[0])**2 + (j-state[1])**2) < radius**2:
                 indexes.append((i,j))
                 new_value = np.random.rand() * 5 + 1
+                new_value = round(new_value, 0)
                 print("changing value at", i,j, "from", valid_map[i,j], "to", new_value)
                 values.append(new_value)
                 valid_map[i,j] = new_value
@@ -155,29 +179,58 @@ def test_against_paper_example():
 
 # test_against_paper_example()
 
-size=3
-start = (0,0)
-# np.random.seed(5)
-goal = (size-1, size-1)
-valid_map = generate_map((size,size))
-print("Generated map, starting test")
-t1 = time.time()
-dstar = dstar_lite.Dstar(valid_map, size*size*10, scale_diag_cost=True)
-dstar.init(*start, *goal)
-# dstar.replan()
-t2 = time.time()
-print("Dstar init time", t2-t1)
-perform_planning_iteration(dstar, start, goal, valid_map, [], [], False)
-for i in range(100000):
-    print(i)
-    next_state = [np.random.randint(0,size), np.random.randint(0,size)]
-    while True:
-        if valid_map[next_state[0], next_state[1]] < np.inf:
-            break
+best_seed = None
+best_iter_seed = np.inf
+for seed_option in [20]:
+# for seed_option in range(100):
+    size=3
+    start = (0,0)
+    plot_things = False
+    print("Seed is", seed_option)
+    np.random.seed(seed_option)
+
+    goal = (size-1, size-1)
+    valid_map = generate_map((size,size)).round(0)
+    print("initial map is", valid_map)
+    print("start is ", start)
+    print("goal is ", goal)
+    print("Generated map, starting test")
+    t1 = time.time()
+    dstar = dstar_lite.Dstar(valid_map, size*size*10, scale_diag_cost=True)
+    dstar.init(*start, *goal)
+    t2 = time.time()
+    print("Dstar init time", t2-t1)
+    perform_planning_iteration(dstar, start, goal, valid_map, [], [], False)
+    print("AFTER FIRST CALL TO CALCULATESHORTESTPATH")
+    print("G\n", assemble_values(dstar.getGValues(), valid_map.shape))
+    print("RHS\n", assemble_values(dstar.getRHSValues(), valid_map.shape))
+    print("First keys\n", assemble_values(dstar.getKeys(), valid_map.shape)[:,:,0])
+    print("Second keys\n", assemble_values(dstar.getKeys(), valid_map.shape)[:,:,1])
+    print("Path\n", dstar.getPath())
+    for i in range(10):
+        print(i)
+        # next_state = dstar.getPath()[1]
         next_state = [np.random.randint(0,size), np.random.randint(0,size)]
-    valid_map, indexes, values = valid_map, [], []
-    print(next_state)
-    print(valid_map)
-    valid_map, indexes, values = change_costs_around_state(next_state, goal, valid_map, 2)
-    perform_planning_iteration(dstar, next_state, goal, valid_map, indexes, values, False)
-    # perform_planning_iteration(dstar, next_state, goal, valid_map, [], [], True)
+        while True:
+            if valid_map[next_state[0], next_state[1]] < np.inf:
+                break
+            next_state = [np.random.randint(0,size), np.random.randint(0,size)]
+        valid_map, indexes, values = valid_map, [], []
+        print("NEXT STATE", next_state)
+        print(valid_map)
+        valid_map, indexes, values = change_costs_around_state(next_state, goal, valid_map, 2)
+        print("CHANGES ARE ", indexes, values)
+        assert False
+        result = perform_planning_iteration(dstar, next_state, goal, valid_map, indexes, values, False)
+        if result == -1:
+            if i < best_iter_seed:
+                best_iter_seed = i
+                best_seed = seed_option
+            break
+
+    del dstar
+
+print("Best seed", best_seed, "best iter seed", best_iter_seed)
+
+        
+        # perform_planning_iteration(dstar, next_state, goal, valid_map, [], [], True)
