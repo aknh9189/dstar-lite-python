@@ -85,7 +85,7 @@ class Dstar
 
 public:
     Dstar(const py::array_t<double, py::array::c_style>& mapArg, 
-          int maxStepsArg,
+          unsigned long maxStepsArg,
           bool scale_diag_cost = true);
     void reset();
     void init(int sI, int sJ, int gI, int gJ);
@@ -111,7 +111,7 @@ private:
 
     double k_m;
     state s_start, s_goal, s_last;
-    int maxSteps;
+    unsigned long maxSteps;
 
     ds_pq openList;
     // store the g and rhs values for each cell

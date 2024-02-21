@@ -19,7 +19,7 @@ std::ostream& operator<<(std::ostream &os, const state& s)
  * Each cell contains the cost of moving through it. So the heuristic is valid all cells must have a cost >= 1
  * Untraversable cells have a cost of infinity
  */
-Dstar::Dstar(const py::array_t<double, py::array::c_style>& mapArg, int maxStepsArg, bool scale_diag_cost)
+Dstar::Dstar(const py::array_t<double, py::array::c_style>& mapArg, unsigned long maxStepsArg, bool scale_diag_cost)
 {
     maxSteps = maxStepsArg; // node expansions before we give up
     init_called = false;
@@ -242,7 +242,7 @@ int Dstar::computeShortestPath()
     if (openList.empty())
         return 1;
     // std::cout << "openList not empty" << std::endl;
-    int k = 0;
+    unsigned long k = 0;
 
     while (!openList.empty()) 
     {
@@ -714,15 +714,6 @@ py::list Dstar::getKeys()
     return output;
 }
 
-/* bool Dstar::replan()
- * --------------------------
- * Updates the costs for all cells and computes the shortest path to
- * goal. Returns true if a path is found, false otherwise. The path is
- * computed by doing a greedy search over the cost+g values in each
- * cells. In order to get around the problem of the robot taking a
- * path that is near a 45 degree angle to goal we break ties based on
- *  the metric euclidean(state, goal) + euclidean(state,start).
- */
 bool Dstar::replan()
 {
     if (!init_called)

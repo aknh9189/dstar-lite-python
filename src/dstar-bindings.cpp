@@ -11,7 +11,7 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(dstar_lite, m) {
     py::class_<Dstar>(m, "Dstar")
-        .def(py::init<const py::array_t<double, py::array::c_style>&, int, bool>(), py::arg("mapArg").noconvert(true), py::arg("maxStepsArg"), py::arg("scale_diag_cost"))
+        .def(py::init<const py::array_t<double, py::array::c_style>&, unsigned long, bool>(), py::arg("mapArg").noconvert(true), py::arg("maxStepsArg"), py::arg("scale_diag_cost"))
         .def("init", &Dstar::init)
         .def("updateStart", &Dstar::updateStart)
         .def("updateCells", &Dstar::updateCells, py::arg("indexes").noconvert(true), py::arg("values").noconvert(true))
