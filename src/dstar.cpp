@@ -53,7 +53,8 @@ Dstar::Dstar(const py::array_t<double, py::array::c_style>& mapArg, int maxSteps
 
     this->g_values = std::vector<double>(map_width * map_height, std::numeric_limits<double>::infinity());
     this->rhs_values = std::vector<double>(map_width * map_height, std::numeric_limits<double>::infinity());
-    this->keyHashes = std::vector<float>(map_width * map_height, std::numeric_limits<float>::infinity());
+    this->firstKey = std::vector<double>(map_width * map_height, std::numeric_limits<double>::infinity());
+    this->secondKey = std::vector<double>(map_width * map_height, std::numeric_limits<double>::infinity());
 
 }
 double Dstar::getMapCell(const state& s){
@@ -74,29 +75,21 @@ void Dstar::printMap() {
     }
 }
 
-/* float Dstar::keyHashCode(state u)
- * --------------------------
- * Returns the key hash code for the state u, this is used to compare
- * a state that have been updated
- */
-float Dstar::keyHashCode(const state& u)
-{
-    if (u.k.first == std::numeric_limits<double>::infinity() || u.k.second == std::numeric_limits<double>::infinity()) {
-        throw std::runtime_error("keyHashCode called with infinity");
-    }
-    return static_cast<float>(u.k.first + MAX_FIRST_KEY_VALUE * u.k.second);
-}
 
 bool Dstar::isStateInOpenList(const state& u)
 {
     // if inf, this state hasn't been added to the open list yet
-    if (keyHashes[u.i * map_width + u.j] == std::numeric_limits<float>::infinity()) {
+
+    if (firstKey[u.i * map_width + u.j] == std::numeric_limits<double>::infinity()) {
         return false;
     }
     return true;
 }
 bool Dstar::isStateWithKeyInOpenList(const state& u) {
-    return close(keyHashes[u.i * map_width + u.j], keyHashCode(u));
+    if (!isStateInOpenList(u)) {
+        return false;
+    }
+    return close(firstKey[u.i * map_width + u.j], u.k.first) && close(secondKey[u.i * map_width + u.j], u.k.second);
 }
 
 bool Dstar::isStateInMap(const state& u) {
@@ -128,7 +121,7 @@ bool Dstar::occupied(const state& u)
     {
         return true;
     }
-    return getMapCell(u) == std::numeric_limits<double>::infinity();
+    return false; //getMapCell(u) == std::numeric_limits<double>::infinity();
 }
 
 /* void Dstar::init(int sX, int sY, int gX, int gY)
@@ -143,7 +136,8 @@ void Dstar::init(int sI, int sJ, int gI, int gJ)
     std::fill(g_values.begin(), g_values.end(), std::numeric_limits<double>::infinity());
     std::fill(rhs_values.begin(), rhs_values.end(), std::numeric_limits<double>::infinity());
     path.clear();
-    std::fill(keyHashes.begin(), keyHashes.end(), std::numeric_limits<float>::infinity());
+    std::fill(firstKey.begin(), firstKey.end(), std::numeric_limits<double>::infinity());
+    std::fill(secondKey.begin(), secondKey.end(), std::numeric_limits<double>::infinity());
     while (!openList.empty()) {
         openList.pop(); // line 02
     }
@@ -275,7 +269,7 @@ int Dstar::computeShortestPath()
             }
             break;
         }
-        std::cout << "finished lazy remove, starting with state: " << u << std::endl;
+        // std::cout << "finished lazy remove, starting with state: " << u << std::endl;
 
         // recheck while loop conditions now that junk has been removed
         // line 10
@@ -290,8 +284,8 @@ int Dstar::computeShortestPath()
         // line 14
         if (k_old < k_new)
         { 
-            std::cout << "\tu is out of date" << std::endl;
-            std::cout << "\tupdating key from " << u << " to " << k_new << " which has comp result " << (k_old < k_new) << std::endl;
+            // std::cout << "\tu is out of date" << std::endl;
+            // std::cout << "\tupdating key from " << u << " to " << k_new << " which has comp result " << (k_old < k_new) << std::endl;
             // line 15
             removeOpen(u);
             insertOpen(k_new);
@@ -299,7 +293,7 @@ int Dstar::computeShortestPath()
         // line 16
         else if (getG(u) > getRHS(u))
         { 
-            std::cout << "\texpanding state " << u << std::endl;
+            // std::cout << "\texpanding state " << u << std::endl;
             // line 17
             setG(u, getRHS(u));
             // line 18
@@ -312,13 +306,13 @@ int Dstar::computeShortestPath()
                 setRHS(*i, std::min(getRHS(*i), cost(*i, u) + getG(u)));
                 // line 21
                 updateVertex(*i);
-                std::cout << "\t\t" << *i << " with rhs " << std::min(getRHS(*i), cost(*i, u) + getG(u)) << std::endl;
+                // std::cout << "\t\t" << *i << " with rhs " << std::min(getRHS(*i), cost(*i, u) + getG(u)) << std::endl;
             }
         }
         // line 22
         else
         { // g <= rhs, state has got worse
-            std::cout << "\tg <= rhs, state has got worse. Setting g to inf and updating self and pred" << std::endl;
+            // std::cout << "\tg <= rhs, state has got worse. Setting g to inf and updating self and pred" << std::endl;
             // line 23
             g_old = getG(u);
             // line 24
@@ -341,7 +335,7 @@ int Dstar::computeShortestPath()
                     }
                 }
                 // line 28
-                std::cout << "\t\t" << *i << " with rhs " << getRHS(*i) << std::endl;
+                // std::cout << "\t\t" << *i << " with rhs " << getRHS(*i) << std::endl;
                 updateVertex(*i);
             }
         }
@@ -370,12 +364,15 @@ void Dstar::updateVertex(const state& u)
     // line 07
     bool g_is_rhs = close(getG(u), getRHS(u));
     bool is_in_open = isStateInOpenList(u);
-    // std::cout << " in updateVertex with state: " << calculateKey(u) << " g_is_rhs: " << g_is_rhs << " is_in_open: " << is_in_open << " rhs/g are " << getRHS(u) << "/" << getG(u) << std::endl;
+    // std::cout << "\t in updateVertex with state: " << calculateKey(u) << " g_is_rhs: " << g_is_rhs << " is_in_open: " << is_in_open << " rhs/g are " << getRHS(u) << "/" << getG(u) << std::endl;
     if (!g_is_rhs && is_in_open) {
         // don't re-insert if the key hasn't changed
         if (!isStateWithKeyInOpenList(calculateKey(u))) {
             removeOpen(u);
             insertOpen(calculateKey(u));
+            // std::cout << "\t\t inserted state " << calculateKey(u) << std::endl;
+        } else {
+            // std::cout << "\t\tDidn't re-insert state" << calculateKey(u) << std::endl;
         }
     } else if (!g_is_rhs && !is_in_open) {
         // line 08
@@ -388,16 +385,16 @@ void Dstar::updateVertex(const state& u)
 
 void Dstar::insertOpen(const state& u)
 {
-    float csum;
 
-    float cur = keyHashes[u.i * map_width + u.j];
-    csum = keyHashCode(u);
-
-    if (close(csum,cur)) {
+    if (isStateWithKeyInOpenList(u)) {
         throw std::runtime_error("Inserting state already on the open list. insert shouldn't have been called.");
     }
+    if (u.k.first == std::numeric_limits<double>::infinity() || u.k.second == std::numeric_limits<double>::infinity() ) {
+        throw std::runtime_error("Inserting state with key of infinity!");
+    }
+    firstKey[u.i * map_width + u.j] = u.k.first;
+    secondKey[u.i * map_width + u.j] = u.k.second;
 
-    keyHashes[u.i * map_width + u.j] = csum;
     openList.push(u);
 }
 
@@ -406,7 +403,9 @@ void Dstar::removeOpen(const state& u)
     if (!isStateInOpenList(u)) {
         throw std::runtime_error("Removing state not on the open list");
     }
-    keyHashes[u.i * map_width + u.j] = std::numeric_limits<float>::infinity();
+    firstKey[u.i * map_width + u.j] = std::numeric_limits<double>::infinity();
+    secondKey[u.i * map_width + u.j] = std::numeric_limits<double>::infinity();
+
 }
 
 /* double Dstar::trueDist(state a, state b)
@@ -445,12 +444,6 @@ state Dstar::calculateKey(const state& u)
     state s(u);
     double val = fmin(getRHS(s), getG(s));
     s.k.first = val + heuristic(s, s_start) + k_m;
-    if (s.k.first > MAX_FIRST_KEY_VALUE) {
-        // to my knowledge, this should only ever happen to the start state
-        if (s != s_start) { 
-            throw std::runtime_error("k.first > MAX_FIRST_KEY_VALUE");
-        }
-    }
     s.k.second = val;
 
     return s;
@@ -491,10 +484,10 @@ void Dstar::updateCells(const py::array_t<int>& indexes, const py::array_t<doubl
         int index_i = indexes_r(i, 0);
         int index_j = indexes_r(i, 1);
         double value = values_r(i);
-        std::cout << "########## updating cell: " << index_i << " " << index_j << " with value: " << value << std::endl;
+        // std::cout << "########## updating cell: " << index_i << " " << index_j << " with value: " << value << std::endl;
         updateCell(index_i, index_j, value);
     }
-    std::cout << "finished updating cells" << std::endl;
+    // std::cout << "finished updating cells" << std::endl;
 }
 /* void Dstar::updateCell(int i, int j, double val)
  * --------------------------
@@ -532,22 +525,22 @@ void Dstar::updateCell(int i, int j, double val)
     double c_old, c_new;
     for (auto u = pred.begin(); u != pred.end(); u++)
     {
-        std::cout << "PROCESSING EDGE: " << u->i << "," << u->j << "->" << v.i << "," << v.j << std::endl;
+        // std::cout << "PROCESSING EDGE: " << u->i << "," << u->j << "->" << v.i << "," << v.j << std::endl;
         // line 41
         c_new = cost(*u, v);
         c_old = old_cell_value;
         if (abs(u->i - v.i) + abs(u->j - v.j) > 1) {
             c_old *= diag_cost_scale;
         }
-        std::cout << "\tc_old: " << c_old << " c_new: " << c_new << std::endl;
+        // std::cout << "\tc_old: " << c_old << " c_new: " << c_new << std::endl;
         // line 43
         if (c_old > c_new) {
             // line 44
-            std::cout << "\tc_old is greater than c_new. RHS is updating to " << std::min(getRHS(*u), c_new + getG(v)) << " from " << getRHS(*u) << std::endl;
+            // std::cout << "\tc_old is greater than c_new. RHS is updating to " << std::min(getRHS(*u), c_new + getG(v)) << " from " << getRHS(*u) << std::endl;
             setRHS(*u, std::min(getRHS(*u), c_new + getG(v)));
         // line 45
         } else if (close(getRHS(*u), c_old + getG(v))) {
-            std::cout << "\trhs is close to c_old + g" << std::endl;
+            // std::cout << "\trhs is close to c_old + g" << std::endl;
             // line 46
             if (*u != s_goal) {
                 double min_over_succ = std::numeric_limits<double>::infinity();
@@ -555,13 +548,13 @@ void Dstar::updateCell(int i, int j, double val)
                 getPred(*u, succ);
                 for (auto sp = succ.begin(); sp != succ.end(); sp++) {
                     min_over_succ = std::min(min_over_succ, cost(*u, *sp) + getG(*sp));
-                    std::cout << "\t\t succ " << *sp << " with cost " << cost(*u, *sp) << " and g " << getG(*sp) << std::endl;
+                    // std::cout << "\t\t succ " << *sp << " with cost " << cost(*u, *sp) << " and g " << getG(*sp) << std::endl;
                 }
-                std::cout << "\tsetting rhs to min_over_succ: " << min_over_succ << " from " << getRHS(*u) << std::endl;
+                // std::cout << "\tsetting rhs to min_over_succ: " << min_over_succ << " from " << getRHS(*u) << std::endl;
                 setRHS(*u, min_over_succ);
             }
         } else {
-            std::cout << "\t no action taken" << std::endl;
+            // std::cout << "\t no action taken" << std::endl;
         }
         updateVertex(*u);
     }
@@ -763,7 +756,7 @@ bool Dstar::replan()
     // sort of line 34
     std::vector<state> n;
     state cur = s_start;
-    int max_iters = 1000000;
+    int max_iters = 100000;
     // std::cout << "goal: " << s_goal << " has g value " << getG(s_goal) << " and rhs " << getRHS(s_goal) << std::endl;
     while (cur != s_goal)
     {

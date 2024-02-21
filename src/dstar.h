@@ -17,7 +17,6 @@
 
 
 #define MAX_MAP_DIM 999999 // for hash_map
-#define MAX_FIRST_KEY_VALUE 999999 // for g-value
 
 using namespace std;
 namespace py = pybind11;
@@ -120,7 +119,8 @@ private:
     std::vector<double> rhs_values;
     // store the key hashes, so we can lazy remove from the open list
     // default is inf 
-    std::vector<float> keyHashes;
+    std::vector<double> firstKey;
+    std::vector<double> secondKey;
 
     // calls init to reset structures 
     void setMap(const py::array_t<double, py::array::c_style>& mapArg); // NOTE: CAN SOMETIMES DECIDE TO SILENT COPY OR NOT SILENT COPY
@@ -146,5 +146,4 @@ private:
     bool isStateInOpenList(const state& u);
     bool isStateWithKeyInOpenList(const state& u);
     bool isStateInMap(const state& u);
-    float keyHashCode(const state& u);
 };

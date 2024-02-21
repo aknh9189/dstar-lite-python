@@ -28,7 +28,7 @@ setup(
     ext_modules=ext_modules,
     extras_require={"test": "pytest"},
     cmdclass={"build_ext": build_ext},
-    extra_compile_args=["-std=c++17", "-O0", '-g', '-Wall', '-Wextra'],
+    extra_compile_args=["-std=c++17", "-O3", '-shared', '-Wall', '-Wextra', '-fpic'],
     zip_safe=False,
     python_requires=">=3.7",
 )

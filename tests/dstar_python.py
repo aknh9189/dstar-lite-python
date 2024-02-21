@@ -158,7 +158,7 @@ class DStarLite:
                 
 
     
-    def ComputeShortestPath(self, printout=True)->None:
+    def ComputeShortestPath(self, printout=False)->None:
         # line 10
         while (TwoKeyQueue._lessthan(self.pq.TopKey(), self.CalcKey(self.s_start)) or \
                self.rhs[self.s_start.i, self.s_start.j] > self.g[self.s_start.i, self.s_start.j]):
