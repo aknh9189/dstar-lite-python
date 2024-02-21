@@ -85,27 +85,28 @@ def generate_map(shape):
     valid_map = np.random.rand(shape[0],shape[1]) * 5 + 1
 
     # make random untraversable patches
-    for _ in range(20):
-        ii, jj = np.random.randint(0,shape[0]), np.random.randint(0,shape[1])
-        width = np.random.randint(0,max(1,shape[0]//10))
-        height = np.random.randint(0,max(shape[1]//10, 1))
-        valid_map[ii:min(ii+width,shape[0]),jj:min(jj+height,shape[1])] = np.inf
+    # for _ in range(20):
+    #     ii, jj = np.random.randint(0,shape[0]), np.random.randint(0,shape[1])
+    #     width = np.random.randint(0,max(1,shape[0]//10))
+    #     height = np.random.randint(0,max(shape[1]//10, 1))
+    #     valid_map[ii:min(ii+width,shape[0]),jj:min(jj+height,shape[1])] = np.inf
     return valid_map
 
 
 def perform_planning_iteration(dstar, current_state, goal, current_map, indexes, values, plot=False):
-    t1 = time.time()
-    dstar.updateStart(*current_state)
+    # before_g = dstar.getGValues()
+    # before_rhs = dstar.getRHSValues()
+    # before_keys = dstar.getKeys()
     # for i in range(len(indexes)):
         # print("index", indexes[i], "value", values[i], "current value", current_map[indexes[i][0], indexes[i][1]])
-    before_g = dstar.getGValues()
-    before_rhs = dstar.getRHSValues()
-    before_keys = dstar.getKeys()
+    t1 = time.time()
+    dstar.updateStart(*current_state)
     if len(indexes) > 0:
         indexes = np.asarray(indexes, dtype=np.int32)
         values = np.asarray(values)
         # print("updating cells")
         dstar.updateCells(indexes, values)
+
         # print("AFTER FIRST CALL TO update map cells")
         # print("G\n", assemble_values(dstar.getGValues(), valid_map.shape))
         # print("RHS\n", assemble_values(dstar.getRHSValues(), valid_map.shape))
@@ -114,6 +115,7 @@ def perform_planning_iteration(dstar, current_state, goal, current_map, indexes,
         # print("replanning")
         # assert False
     dstar_success = dstar.replan()
+    t2 = time.time()
     if not dstar_success:
         # plot_values(before_g)
         # plot_values(before_rhs)
@@ -127,10 +129,9 @@ def perform_planning_iteration(dstar, current_state, goal, current_map, indexes,
         print("Dstar replan failed")
         return -1
         # plt.show()
-    print("getting path")
+    # print("getting path")
     dstar_plan = dstar.getPath()
     print("done with dstar")
-    t2 = time.time()
     if plot:
         plot_values(dstar.getGValues())
         plot_values(dstar.getRHSValues())
@@ -144,6 +145,9 @@ def perform_planning_iteration(dstar, current_state, goal, current_map, indexes,
     print("Astar cost: ", get_cost_from_path(path, current_map), " length", len(path), "success", astar_success, "time", t2-t1)
     if plot:
         plot_paths(current_map, [dstar_plan, path], ["Dstar", "Astar"], current_state, goal)
+
+    if not np.isclose(get_cost_from_path(dstar_plan, current_map), get_cost_from_path(path, current_map)):
+        return -1
 
 def change_costs_around_state(state, goal, valid_map, radius=100):
     indexes = []
@@ -160,7 +164,9 @@ def change_costs_around_state(state, goal, valid_map, radius=100):
                 indexes.append((i,j))
                 new_value = np.random.rand() * 5 + 1
                 new_value = round(new_value, 0)
-                print("changing value at", i,j, "from", valid_map[i,j], "to", new_value)
+                if np.random.rand() > 0.99:
+                    new_value = np.inf
+                # print("changing value at", i,j, "from", valid_map[i,j], "to", new_value)
                 values.append(new_value)
                 valid_map[i,j] = new_value
 
@@ -187,9 +193,9 @@ def test_against_paper_example():
 
 best_seed = None
 best_iter_seed = np.inf
-# for seed_option in [591]:
+# for seed_option in [375]:
 for seed_option in range(1000):
-    size=3
+    size=10
     start = (0,0)
     plot_things = False
     print("Seed is", seed_option)
@@ -213,7 +219,7 @@ for seed_option in range(1000):
     # print("First keys\n", assemble_values(dstar.getKeys(), valid_map.shape)[:,:,0])
     # print("Second keys\n", assemble_values(dstar.getKeys(), valid_map.shape)[:,:,1])
     # print("Path\n", dstar.getPath())
-    for i in range(100):
+    for i in range(100000):
         print(i)
         if len(dstar.getPath()) <= 2:
             break
@@ -224,10 +230,11 @@ for seed_option in range(1000):
         #         break
         #     next_state = [np.random.randint(0,size), np.random.randint(0,size)]
         valid_map, indexes, values = valid_map, [], []
-        # print("NEXT STATE", next_state)
+        print("NEXT STATE", next_state)
         # print(valid_map)
-        valid_map, indexes, values = change_costs_around_state(next_state, goal, valid_map, 2)
-        # print("CHANGES ARE ", indexes, values)
+        valid_map, indexes, values = change_costs_around_state(next_state, goal, valid_map, 100)
+        print("CHANGES ARE ", indexes, values)
+        print("map is now \n", valid_map)
 
 
         result = perform_planning_iteration(dstar, next_state, goal, valid_map, indexes, values, plot_things)
@@ -237,8 +244,6 @@ for seed_option in range(1000):
                 best_seed = seed_option
             print(best_seed)
             assert False
-
-    del dstar
 
 print("Best seed", best_seed, "best iter seed", best_iter_seed)
 

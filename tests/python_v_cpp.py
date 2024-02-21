@@ -23,23 +23,24 @@ def assemble_values(value_list, shape = None):
             output[i,j,0] = value1
             output[i,j,1] = value2
     return output
-
+map_size = 4
 start_map = np.asarray([
-    [4,1,3],
-    [4,3,2],
-    [2,3,2]
+    [2,1,1,3],
+    [2,4,6,2],
+    [1,4,6,5],
+    [5,1,3,2]
 ], dtype=float)
 start = (0,0)
-goal = (2,2)
+goal = (3,3)
 
 def edge_cost_changes(i, s, g):
     if i == 0:
         return [
-            (0,0,4),
-            (0,2,5),
-            (1,0,2), 
-            (1,1,6),
-            (1,2,5)
+            (0,0,1),
+            (0,1,3),
+            (1,1,2), 
+            (2,0,4),
+            (2,1,3)
         ]
     else:
         return []
@@ -66,9 +67,8 @@ dstar_py.Main(edge_cost_changes)
 print ("############################ DONE WITH PYTHON##############################")
 
 dstar_cpp.replan()
-print("G", assemble_values(dstar_cpp.getGValues(), (3,3)))
-print("RHS", assemble_values(dstar_cpp.getRHSValues(), (3,3)))
-# k = assemble_values(dstar_cpp.getKeys(), (3,3))
+print("G", assemble_values(dstar_cpp.getGValues(), (map_size, map_size)))
+print("RHS", assemble_values(dstar_cpp.getRHSValues(), (map_size,map_size)))
 print("Keys", dstar_cpp.getKeys())
 print("Path", dstar_cpp.getPath())
 new_start = dstar_cpp.getPath()[1]
@@ -76,11 +76,11 @@ dstar_cpp.updateStart(*new_start)
 idx, val = edge_costs_to_updateCells(edge_cost_changes(0,None,None))
 dstar_cpp.updateCells(idx,val)
 print ("####### STATE AFTER UPDATING CELLS ")
-print("G", assemble_values(dstar_cpp.getGValues(), (3,3)))
-print("RHS", assemble_values(dstar_cpp.getRHSValues(), (3,3)))
+print("G", assemble_values(dstar_cpp.getGValues(), (map_size,map_size)))
+print("RHS", assemble_values(dstar_cpp.getRHSValues(), (map_size,map_size)))
 print("Keys", dstar_cpp.getKeys())
 dstar_cpp.replan()
-print("G", assemble_values(dstar_cpp.getGValues(), (3,3)))
-print("RHS", assemble_values(dstar_cpp.getRHSValues(), (3,3)))
+print("G", assemble_values(dstar_cpp.getGValues(), (map_size,map_size)))
+print("RHS", assemble_values(dstar_cpp.getRHSValues(), (map_size,map_size)))
 print("Keys", dstar_cpp.getKeys())
 
