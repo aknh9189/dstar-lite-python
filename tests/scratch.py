@@ -4,6 +4,7 @@ import time
 import faulthandler
 import numpy as np 
 import matplotlib.pyplot as plt
+# from radial_learning.planners.planner_general import get_acc_costs
 
 faulthandler.enable()
 
@@ -71,7 +72,7 @@ def plot_paths(mapArg, paths, path_names, start,goal):
     plt.show()
 
 
-def get_cost_from_path(path, mapArg):
+def get_acc_costs(path, mapArg, _):
     cost = 0
     path = list(reversed(path))
     for i in range(len(path)-1):
@@ -79,7 +80,7 @@ def get_cost_from_path(path, mapArg):
         if abs(path[i+1][0] - path[i][0]) + abs(path[i+1][1] - path[i][1]) > 1:
             scale = np.sqrt(2)
         cost += mapArg[path[i][0], path[i][1]] * scale
-    return cost
+    return [cost]
 
 def generate_map(shape):
     valid_map = np.random.rand(shape[0],shape[1]) * 5 + 1
@@ -138,11 +139,15 @@ def perform_planning_iteration(dstar, current_state, goal, current_map, indexes,
         plot_values(dstar.getKeys())
 
     print("Starting from ", current_state)
-    print("Dstar cost: ", get_cost_from_path(dstar_plan, current_map), " length", len(dstar_plan), "success", dstar_success, "time", t2-t1)
-    # t1 = time.time()
-    # astar_success, path, cost = pyastar2d.astar_path(current_map.astype(np.float32), current_state, goal, allow_diagonal=True)
-    # t2 = time.time()
-    # print("Astar cost: ", get_cost_from_path(path, current_map), " length", len(path), "success", astar_success, "time", t2-t1)
+    dstar_costs = get_acc_costs(dstar_plan, current_map, 1.0)
+    print("Dstar cost: ", dstar_costs[-1], " length", len(dstar_plan), "success", dstar_success, "time", t2-t1)
+    t1 = time.time()
+    astar_success, path, cost = pyastar2d.astar_path(current_map.astype(np.float32), current_state, goal, allow_diagonal=True)
+    t2 = time.time()
+    astar_costs = get_acc_costs(path, current_map, 1.0)
+    print("Astar cost: ", astar_costs[-1], " length", len(path), "success", astar_success, "time", t2-t1)
+    if not np.isclose(dstar_costs[-1], astar_costs[-1]):
+        print("COSTS ARE DIFFERENT!!!! ########")
     # if plot:
     #     plot_paths(current_map, [dstar_plan, path], ["Dstar", "Astar"], current_state, goal)
 
@@ -233,8 +238,8 @@ for seed_option in range(1000):
         print("NEXT STATE", next_state)
         # print(valid_map)
         valid_map, indexes, values = change_costs_around_state(next_state, goal, valid_map, 100)
-        print("CHANGES ARE ", indexes, values)
-        print("map is now \n", valid_map)
+        # print("CHANGES ARE ", indexes, values)
+        # print("map is now \n", valid_map)
 
 
         result = perform_planning_iteration(dstar, next_state, goal, valid_map, indexes, values, plot_things)

@@ -343,16 +343,14 @@ int Dstar::computeShortestPath()
     return 0;
 }
 
-/* bool Dstar::close(double x, double y)
- * --------------------------
- * Returns true if x and y are within 10E-5, false otherwise
- */
-bool Dstar::close(double x, double y)
+bool Dstar::close(double x, double y, double eps, double abs_th)
 {
-
-    if (isinf(x) && isinf(y))
-        return true;
-    return (fabs(x - y) < 0.00000001);
+    assert(std::numeric_limits<double>::epsilon() < eps);
+    assert(eps < 1.f);
+    if (x == y) return true;
+    auto diff = std::abs(x-y);
+    auto norm = std::min(std::abs(x+y), std::numeric_limits<double>::max());
+    return diff < std::max(abs_th, eps * norm);
 }
 
 /* void Dstar::updateVertex(state u)
@@ -784,6 +782,9 @@ bool Dstar::replan()
                 smin = *i;
             }
         }
+        // if (cur == s_start) {
+        //     std::cout << "found cost to goal of " << cmin << std::endl;
+        // }
         n.clear();
         cur = smin;
         // std::cout << "cur: " << cur << " with g value " << getG(cur) <<  std::endl;

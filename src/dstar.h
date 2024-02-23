@@ -8,6 +8,7 @@
 #include <math.h>
 #include <stack>
 #include <queue>
+#include <float.h>
 #include <list>
 #include <unordered_map>
 #include <pybind11/pybind11.h>
@@ -40,20 +41,20 @@ public:
 
     bool operator>(const state &s2) const
     {
-        if (k.first - 0.000001 > s2.k.first)
+        if (k.first - 0.00000001 > s2.k.first)
             return true;
-        else if (k.first < s2.k.first - 0.000001)
+        else if (k.first < s2.k.first - 0.00000001)
             return false;
-        return (k.second - 0.000001) > s2.k.second;
+        return (k.second - 0.00000001) > s2.k.second;
     }
 
     bool operator<(const state &s2) const
     {
-        if (k.first + 0.000001 < s2.k.first)
+        if (k.first + 0.00000001 < s2.k.first)
             return true;
-        else if (k.first - 0.000001 > s2.k.first)
+        else if (k.first - 0.00000001 > s2.k.first)
             return false;
-        return (k.second + 0.000001) < s2.k.second;
+        return (k.second + 0.00000001) < s2.k.second;
     }
     friend std::ostream& operator<<(std::ostream &os, const state& s);
 
@@ -118,7 +119,8 @@ private:
     void setMap(const py::array_t<double, py::array::c_style>& mapArg); // NOTE: CAN SOMETIMES DECIDE TO SILENT COPY OR NOT SILENT COPY
     double getMapCell(const state& state);
     void setMapCell(const state& state, double value);
-    bool close(double x, double y);
+    // based on https://stackoverflow.com/questions/4915462/how-should-i-do-floating-point-comparison
+    bool close(double x, double y, double eps= 128 * DBL_EPSILON, double abs_th = DBL_MIN);
     double getG(const state& u);
     double getRHS(const state& u);
     void setG(const state& u, double g);
