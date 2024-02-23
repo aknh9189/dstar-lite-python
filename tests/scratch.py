@@ -139,15 +139,15 @@ def perform_planning_iteration(dstar, current_state, goal, current_map, indexes,
 
     print("Starting from ", current_state)
     print("Dstar cost: ", get_cost_from_path(dstar_plan, current_map), " length", len(dstar_plan), "success", dstar_success, "time", t2-t1)
-    t1 = time.time()
-    astar_success, path, cost = pyastar2d.astar_path(current_map.astype(np.float32), current_state, goal, allow_diagonal=True)
-    t2 = time.time()
-    print("Astar cost: ", get_cost_from_path(path, current_map), " length", len(path), "success", astar_success, "time", t2-t1)
-    if plot:
-        plot_paths(current_map, [dstar_plan, path], ["Dstar", "Astar"], current_state, goal)
+    # t1 = time.time()
+    # astar_success, path, cost = pyastar2d.astar_path(current_map.astype(np.float32), current_state, goal, allow_diagonal=True)
+    # t2 = time.time()
+    # print("Astar cost: ", get_cost_from_path(path, current_map), " length", len(path), "success", astar_success, "time", t2-t1)
+    # if plot:
+    #     plot_paths(current_map, [dstar_plan, path], ["Dstar", "Astar"], current_state, goal)
 
-    if not np.isclose(get_cost_from_path(dstar_plan, current_map), get_cost_from_path(path, current_map)):
-        return -1
+    # if not np.isclose(get_cost_from_path(dstar_plan, current_map), get_cost_from_path(path, current_map)):
+    #     return -1
 
 def change_costs_around_state(state, goal, valid_map, radius=100):
     indexes = []
@@ -193,9 +193,9 @@ def test_against_paper_example():
 
 best_seed = None
 best_iter_seed = np.inf
-# for seed_option in [375]:
+# for seed_option in [126]:
 for seed_option in range(1000):
-    size=10
+    size=4000
     start = (0,0)
     plot_things = False
     print("Seed is", seed_option)

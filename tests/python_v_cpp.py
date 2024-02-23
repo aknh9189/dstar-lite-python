@@ -2,46 +2,29 @@ from dstar_python import DStarLite, State
 from dstar_lite import Dstar
 import numpy as np
 
-def assemble_values(value_list, shape = None):
-    if shape is None:
-        max_i, max_j = 0,0
-        for item in value_list:
-            i,j = item[:2] 
-            max_i = max(max_i, i)
-            max_j = max(max_j, j)
-        shape = (max_i+1, max_j+1)
-    output = np.ones(shape) * np.inf
-    if len(value_list[0]) == 4:
-        # add a new axis for the second value
-        output = np.stack([output, np.ones(shape) * np.inf], axis=-1)
-    for item in value_list:
-        if len(item) == 3:
-            i,j,value = item
-            output[i,j] = value
-        elif len(item) == 4:
-            i,j,value1,value2 = item
-            output[i,j,0] = value1
-            output[i,j,1] = value2
-    return output
 map_size = 4
 start_map = np.asarray([
-    [2,1,1,3],
-    [2,4,6,2],
-    [1,4,6,5],
-    [5,1,3,2]
+ [2, 5, np.inf,2.],
+ [5, 4, np.inf,1.],
+ [3, np.inf, np.inf, 5.],
+ [3, 6, 1, 2.]
 ], dtype=float)
 start = (0,0)
 goal = (3,3)
 
 def edge_cost_changes(i, s, g):
-    if i == 0:
-        return [
-            (0,0,1),
-            (0,1,3),
-            (1,1,2), 
-            (2,0,4),
-            (2,1,3)
-        ]
+    # if i == 0:
+    #     idxs = [(0, 0), (0, 2), (0, 3), (1, 0), (1, 1), (1, 2), (1, 3), (2, 0), (2, 1), (2, 2), (2, 3), (3, 0), (3, 1), (3, 2)]
+    #     values =  [3.0, 3.0, 5.0, 5.0, 4.0, 4.0, 5.0, 4.0, 3.0, 6.0, 2.0, 5.0, 3.0, 2.0]
+    #     return [(i, j, v) for (i, j), v in zip(idxs, values)]
+    if i == 1:
+        idxs = [(0, 0)]
+        values = [np.inf]
+        return [(i, j, v) for (i, j), v in zip(idxs, values)]
+    # elif i == 2:
+    #     idxs = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2), (1, 3), (2, 0), (2, 1), (2, 2), (2, 3), (3, 0), (3, 1), (3, 2)] 
+    #     values = [6.0, 3.0, 2.0, 4.0, 3.0, 3.0, 6.0, 5.0, 4.0, 4.0, 4.0, 1.0, 4.0, 5.0]
+    #     return [(i, j, v) for (i, j), v in zip(idxs, values)]
     else:
         return []
 def edge_costs_to_updateCells(changes):
@@ -67,20 +50,20 @@ dstar_py.Main(edge_cost_changes)
 print ("############################ DONE WITH PYTHON##############################")
 
 dstar_cpp.replan()
-print("G", assemble_values(dstar_cpp.getGValues(), (map_size, map_size)))
-print("RHS", assemble_values(dstar_cpp.getRHSValues(), (map_size,map_size)))
+print("G", np.asarray(dstar_cpp.getGValues()).reshape(map_size,map_size))
+print("RHS", np.asarray(dstar_cpp.getRHSValues()).reshape(map_size,map_size))
 print("Keys", dstar_cpp.getKeys())
 print("Path", dstar_cpp.getPath())
 new_start = dstar_cpp.getPath()[1]
 dstar_cpp.updateStart(*new_start)
-idx, val = edge_costs_to_updateCells(edge_cost_changes(0,None,None))
+idx, val = edge_costs_to_updateCells(edge_cost_changes(1,None,None))
 dstar_cpp.updateCells(idx,val)
 print ("####### STATE AFTER UPDATING CELLS ")
-print("G", assemble_values(dstar_cpp.getGValues(), (map_size,map_size)))
-print("RHS", assemble_values(dstar_cpp.getRHSValues(), (map_size,map_size)))
+print("G", dstar_cpp.getGValues().reshape(map_size,map_size))
+print("RHS", dstar_cpp.getRHSValues().reshape(map_size,map_size))
 print("Keys", dstar_cpp.getKeys())
 dstar_cpp.replan()
-print("G", assemble_values(dstar_cpp.getGValues(), (map_size,map_size)))
-print("RHS", assemble_values(dstar_cpp.getRHSValues(), (map_size,map_size)))
+print("G", dstar_cpp.getGValues().reshape(map_size,map_size))
+print("RHS", dstar_cpp.getRHSValues().reshape(map_size,map_size))
 print("Keys", dstar_cpp.getKeys())
 

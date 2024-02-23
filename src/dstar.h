@@ -69,15 +69,6 @@ struct cellInfo
     double rhs = std::numeric_limits<double>::infinity();
 };
 
-class state_hash
-{
-public:
-    size_t operator()(const state &s) const
-    {
-        return s.i + MAX_MAP_DIM * s.j;
-    }
-};
-
 typedef priority_queue<state, vector<state>, greater<state>> ds_pq;
 
 class Dstar
@@ -100,6 +91,7 @@ public:
     py::list getGValues();
     py::list getRHSValues();
     py::list getKeys();
+    py::list getMap();
 
 private:
     double diag_cost_scale;

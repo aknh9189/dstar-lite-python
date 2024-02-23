@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any
 import numpy as np 
+import itertools
+import heapq
 
 @dataclass
 class State:
@@ -16,68 +18,70 @@ class State:
 
 class TwoKeyQueue:
     def __init__(self):
-        self.items = {} # map key pair (state->[float, float])
+        self.pq = []
+        self.state_finder = {}
+        self.counter = itertools.count()
+        self.REMOVED_TEMPLATE = '<removed-state>:'
+
     def Insert(self,u:State, key:tuple[float,float])->None:
         # check that it's not in the list
-        if u in self.items:
+        if u in self.state_finder:
             raise RuntimeError(f"Inserting state {u} that is already in the queue with value {self.items[u]}")
-        self.items[u] = key
+        entry = [key, next(self.counter), u]
+        self.state_finder[u] = entry
+        heapq.heappush(self.pq, entry)
 
     def Update(self, u:State, key:tuple[float,float])->None:
-        if u not in self.items:
+        if u not in self.state_finder:
             raise RuntimeError(f"Updating state {u} that is not in queue")
-        
-        # if key == self.items[u]:
-        #     raise RuntimeWarning(f"Called update and set the key to be the same as it already was")
-        self.items[u] = key
+
+        self.Remove(u)
+        self.Insert(u, key)
 
     def Remove(self, u:State):
-        if u not in self.items:
+        if u not in self.state_finder:
             raise RuntimeError(f"Called remove on a state that is not in the queue: {u}")
-        del self.items[u]
+        entry = self.state_finder.pop(u)
+        entry[-1] = self.REMOVED_TEMPLATE + str(u)
 
     def In(self, u:State):
-        return u in self.items 
+        return u in self.state_finder 
+
     def Pop(self):
-        _, best_state = self._find_top_of_queue()
-        del self.items[best_state]
+        while self.pq:
+            key, count, u = heapq.heappop(self.pq)
+            if not isinstance(u, str):
+                del self.state_finder[u]
+                return u
+
     def TopKey(self):
-        best_key, _ = self._find_top_of_queue()
-        return best_key
+        while self.pq:
+            if not isinstance(self.pq[0][2], str):
+                return self.pq[0][0]
+            heapq.heappop(self.pq)
+        raise RuntimeError("PQ is empty")
+
     def Top(self):
-        _, best_state = self._find_top_of_queue()
-        return best_state
+        while self.pq:
+            if not isinstance(self.pq[0][2], str):
+                return self.pq[0][2]
+            heapq.heappop(self.pq)
+    
+    def _get_all_items(self):
+        all_items = []
+        for u in self.state_finder:
+            if not isinstance(self.state_finder[u][2], str):
+                all_items.append(self.state_finder[u])
 
-    def _find_top_of_queue(self):
-        """Return the best key, value pair"""
-        if len(self.items) == 0:
-            raise RuntimeError("Called queue sort when the queue is empty")
-        best_key = (np.inf, np.inf)
-        best_state = None
-        for state, key in self.items.items():
-            if self._lessthan(key, best_key):
-                best_key = key
-                best_state = state
-        return best_key, best_state
-
-    @staticmethod
-    def _lessthan(a, b):
-        """Is a less than b?"""
-        if a[0] < b[0]:
-            return True
-        elif a[0] > b[0]:
-            return False
-        else:
-            return a[1] < b[1]
+        return sorted(all_items, key=lambda x: x[0:2])
+    
     def __repr__(self) -> str:
         output = ""
-        if len(self.items) == 0:
+        if len(self.pq) == 0:
             return "PQ is empty"
-        k, s = self._find_top_of_queue()
-        output += f"Top: {s} -> {k}\n"
         output += "List:\n"
-        for k, v in self.items.items():
-            output += f"\t{k}->{v}\n"
+        for v in self._get_all_items():
+            output += f"\t{v}\n"
         return output
         
 def test_priority_queue():
@@ -112,6 +116,8 @@ class DStarLite:
         self.k_m = None
 
     def Initialize(self):
+        # line 29
+        self.s_last = self.s_start
         # line 02
         self.pq = TwoKeyQueue()
         #line 03
@@ -154,13 +160,13 @@ class DStarLite:
         scale = 1
         if (abs(u.i-v.i) + abs(u.j - v.j)) == 2:
             scale = np.sqrt(2)
-        return scale * self.costmap[v.i, v.j]
+        return scale * self.costmap[v.i, v.j] 
                 
 
     
     def ComputeShortestPath(self, printout=False)->None:
         # line 10
-        while (TwoKeyQueue._lessthan(self.pq.TopKey(), self.CalcKey(self.s_start)) or \
+        while ((self.pq.TopKey() < self.CalcKey(self.s_start)) or \
                self.rhs[self.s_start.i, self.s_start.j] > self.g[self.s_start.i, self.s_start.j]):
             # line 11, 12, 13 
             u = self.pq.Top()
@@ -168,7 +174,7 @@ class DStarLite:
             k_new = self.CalcKey(u)
             if printout: print(f"Working with state {u}, k_old {k_old} and k_new {k_new}")
             # line 14
-            if TwoKeyQueue._lessthan(k_old, k_new):
+            if (k_old < k_new):
                 # line 15
                 if printout: print(f"\tupdated it's key: {u} -> {k_new}")
                 self.pq.Update(u, k_new)
@@ -208,12 +214,63 @@ class DStarLite:
                     if printout: print(f"\t\t{s}, setting rhs to {self.rhs[s.i, s.j]}") 
                     self.UpdateVertex(s)
 
+    def IncorperateEdgeChanges(self, indexes:np.ndarray, values:np.ndarray, printout:bool=False)->None:
+        # line 38
+        self.k_m += self.h(self.s_last, self.s_start)
+        # line 39
+        self.s_last = self.s_start
+        # line 40
+        edge_changed = False
+        for change_idx in range(indexes.shape[0]):
+            # if value doesn't change, don't update edges
+            if self.costmap[indexes[change_idx,0], indexes[change_idx, 1]] == values[change_idx]:
+                continue
+            if printout: print("### incorperating updates for proposed change", indexes[change_idx], values[change_idx])
+            edge_changed = True
+            v = State(indexes[change_idx, 0], indexes[change_idx, 1])
+            old_costs = []
+            new_costs = []
+            pred = self.Pred(v)
+            for u in pred:
+                old_costs.append(self.c(u,v))
+            # line 42
+            self.costmap[v.i, v.j] = values[change_idx]
+            for u in pred:
+                new_costs.append(self.c(u,v))
+            # line 41, 40
+            for u, c_new, c_old in zip(pred, new_costs, old_costs):
+                if printout: print(f"Looking at edge {u}->{v} with c_old {c_old} and c_new {c_new}")
+                # line 43
+                if c_old > c_new:
+                    # line 44
+                    if printout: print(f"\t updating rhs from {self.rhs[u.i, u.j]} to {min(self.rhs[u.i, u.j], c_new + self.g[v.i, v.j])}")
+                    self.rhs[u.i, u.j] = min(self.rhs[u.i, u.j], c_new + self.g[v.i, v.j])
+                elif self.rhs[u.i, u.j] == c_old + self.g[v.i, v.j]:
+                    if printout: print("\trhs is close to c_old + g")
+                    if u != self.s_goal:
+                        min_val = np.inf
+                        succ = self.Pred(u)
+                        if printout: print("\t successor scan:")
+                        for sp in succ:
+                            if printout: print(f"\t\t{sp} cost {self.c(u,sp)} g value {self.g[sp.i, sp.j]}")
+                            min_val = min(min_val, self.c(u,sp) + self.g[sp.i, sp.j])
+                        if printout: print(f"\tsetting rhs from {self.rhs[u.i, u.j]} to {min_val}")
+                        self.rhs[u.i, u.j] = min_val
+                    else:
+                        if printout: print("u is goal, so exiting")
+                else:
+                    if printout: print("\tNo action taken")
+                self.UpdateVertex(u)
+        return edge_changed
+
+    def UpdateStart(self, new_start:State)->None:
+        self.s_start = new_start
+
+
     def Main(self, edge_cost_changes:callable)->None:
         """
         edge_cost_changes[int iteration, State current_state, State goal]->[(i,j,newValue)]
         """
-        # line 29
-        self.s_last = self.s_start
         # line 30
         self.Initialize()
         # line 31
@@ -235,69 +292,21 @@ class DStarLite:
                     min_state = sp
             print("moving to ", min_state)
             # line 35
-            self.s_start = min_state
+            self.UpdateStart(min_state)
             edge_changes = edge_cost_changes(iteration, self.s_start, self.s_goal)
             print("Incorporating changes", edge_changes)
             # line 37
             if len(edge_changes) > 0:
-                # line 38
-                self.k_m += self.h(self.s_last, self.s_start)
-                # line 39
-                self.s_last = self.s_start
-                # line 40
-                edge_changed = False
-                for proposed_change in edge_changes:
-                    # if value doesn't change, don't update edges
-                    if self.costmap[proposed_change[0], proposed_change[1]] == proposed_change[2]:
-                        continue
-                    print("### incorperating updates for proposed change", proposed_change)
-                    edge_changed = True
-                    v = State(proposed_change[0], proposed_change[1])
-                    old_costs = []
-                    new_costs = []
-                    pred = self.Pred(v)
-                    for u in pred:
-                        old_costs.append(self.c(u,v))
-                    # line 42
-                    self.costmap[v.i, v.j] = proposed_change[2]
-                    for u in pred:
-                        new_costs.append(self.c(u,v))
-                    # line 41, 40
-                    for u, c_new, c_old in zip(pred, new_costs, old_costs):
-                        print(f"Looking at edge {u}->{v} with c_old {c_old} and c_new {c_new}")
-                        # line 43
-                        if c_old > c_new:
-                            # line 44
-                            print(f"\t updating rhs from {self.rhs[u.i, u.j]} to {min(self.rhs[u.i, u.j], c_new + self.g[v.i, v.j])}")
-                            self.rhs[u.i, u.j] = min(self.rhs[u.i, u.j], c_new + self.g[v.i, v.j])
-                        elif self.rhs[u.i, u.j] == c_old + self.g[v.i, v.j]:
-                            print("\trhs is close to c_old + g")
-                            if u != self.s_goal:
-                                min_val = np.inf
-                                succ = self.Pred(u)
-                                print("\t successor scan:")
-                                for sp in succ:
-                                    print(f"\t\t{sp} cost {self.c(u,sp)} g value {self.g[sp.i, sp.j]}")
-                                    min_val = min(min_val, self.c(u,sp) + self.g[sp.i, sp.j])
-                                print(f"\tsetting rhs from {self.rhs[u.i, u.j]} to {min_val}")
-                                self.rhs[u.i, u.j] = min_val
-                            else:
-                                print("u is goal, so exiting")
-                        else:
-                            print("\tNo action taken")
-                        self.UpdateVertex(u)
-
+                indexes = np.array([x[:2] for x in edge_changes])
+                values = np.array([x[2] for x in edge_changes])
+                edge_changed = self.IncorperateEdgeChanges(indexes, values)
                 if edge_changed:
                     print("State after changes before computeShortestPath is ", self)
                     self.ComputeShortestPath() 
 
-
-
-
-
-
-
             iteration += 1
+            if iteration == 5:
+                break
 
     
     def CalcKey(self, s:State)->tuple[float,float]:
@@ -311,10 +320,11 @@ class DStarLite:
             tmp = min_delta
             min_delta = max_delta
             max_delta = tmp
-        return round((np.sqrt(2) - 1) * min_delta + max_delta, 3)
+        return (np.sqrt(2) - 1) * min_delta + max_delta
 
     def __repr__(self) -> str:
         out = f"k_m: {self.k_m} start: {self.s_start} goal: {self.s_goal} s_last: {self.s_last}\n"
+        out += f"Costmap: \n{self.costmap}\n"
         out += f"G: \n{self.g}\n"
         out += f"RHS: \n{self.rhs}\n"
         out += f"Pq: \n{self.pq}\n"

@@ -352,7 +352,7 @@ bool Dstar::close(double x, double y)
 
     if (isinf(x) && isinf(y))
         return true;
-    return (fabs(x - y) < 0.00001);
+    return (fabs(x - y) < 0.00000001);
 }
 
 /* void Dstar::updateVertex(state u)
@@ -502,12 +502,17 @@ void Dstar::updateCell(int i, int j, double val)
     v.j = j;
 
     double old_cell_value = getMapCell(v);
-    if (close(old_cell_value, val)) {
+    if (old_cell_value == val) {
         return;
     }
+    edge_cost_changed = true;
 
-    if ((v == s_start) || (v == s_goal)) {
-        return;
+    std::vector<state> pred;
+    getPred(v, pred);
+
+    std::vector<double> old_edge_costs;
+    for (auto u = pred.begin(); u != pred.end(); u++) {
+        old_edge_costs.push_back(cost(*u, v));
     }
 
     // line 38
@@ -520,46 +525,40 @@ void Dstar::updateCell(int i, int j, double val)
     setMapCell(v, val);
     // line 40
     // since cost of a->b is the cost of cell b, only the directed edges x -> v need to be updated
-    std::vector<state> pred;
-    getPred(v, pred);
-    double c_old, c_new;
-    for (auto u = pred.begin(); u != pred.end(); u++)
+    for (unsigned int index = 0; index != pred.size(); index++) 
     {
         // std::cout << "PROCESSING EDGE: " << u->i << "," << u->j << "->" << v.i << "," << v.j << std::endl;
         // line 41
-        c_new = cost(*u, v);
-        c_old = old_cell_value;
-        if (abs(u->i - v.i) + abs(u->j - v.j) > 1) {
-            c_old *= diag_cost_scale;
-        }
+        const double c_old = old_edge_costs[index];
+        const state u = pred[index];
+        const double c_new = cost(u, v);
         // std::cout << "\tc_old: " << c_old << " c_new: " << c_new << std::endl;
         // line 43
         if (c_old > c_new) {
             // line 44
-            // std::cout << "\tc_old is greater than c_new. RHS is updating to " << std::min(getRHS(*u), c_new + getG(v)) << " from " << getRHS(*u) << std::endl;
-            setRHS(*u, std::min(getRHS(*u), c_new + getG(v)));
+            // std::cout << "\tc_old is greater than c_new. RHS is updating to " << std::min(getRHS(u), c_new + getG(v)) << " from " << getRHS(u) << std::endl;
+            setRHS(u, std::min(getRHS(u), c_new + getG(v)));
         // line 45
-        } else if (close(getRHS(*u), c_old + getG(v))) {
+        } else if (getRHS(u) == c_old + getG(v)) {
             // std::cout << "\trhs is close to c_old + g" << std::endl;
             // line 46
-            if (*u != s_goal) {
+            if (u != s_goal) {
                 double min_over_succ = std::numeric_limits<double>::infinity();
                 std::vector<state> succ;
-                getPred(*u, succ);
+                getPred(u, succ);
                 for (auto sp = succ.begin(); sp != succ.end(); sp++) {
-                    min_over_succ = std::min(min_over_succ, cost(*u, *sp) + getG(*sp));
+                    min_over_succ = std::min(min_over_succ, cost(u, *sp) + getG(*sp));
                     // std::cout << "\t\t succ " << *sp << " with cost " << cost(*u, *sp) << " and g " << getG(*sp) << std::endl;
                 }
                 // std::cout << "\tsetting rhs to min_over_succ: " << min_over_succ << " from " << getRHS(*u) << std::endl;
-                setRHS(*u, min_over_succ);
+                setRHS(u, min_over_succ);
             }
         } else {
             // std::cout << "\t no action taken" << std::endl;
         }
-        updateVertex(*u);
+        updateVertex(u);
     }
 
-    edge_cost_changed = true;
 }
 /* void Dstar::getPred(state u,list<state> &s)
  * --------------------------
@@ -662,28 +661,28 @@ void Dstar::updateStart(int i, int j)
     }
 }
 
-
+py::list Dstar::getMap() {
+    py::list output;
+    for (auto i=map.begin(); i!=map.end(); i++){
+        output.append(*i);
+    }
+    return output;
+}
 py::list Dstar::getGValues()
 {
     py::list output;
-    for (auto i = 0; i < map_height; i++)
+    for (auto i = g_values.begin(); i != g_values.end(); i++)
     {
-        for (auto j = 0; j < map_width; j++)
-        {
-            output.append(py::make_tuple(i, j, getG(state{i, j})));
-        }
+        output.append(*i);
     }
     return output;
 }
 py::list Dstar::getRHSValues()
 {
     py::list output;
-    for (auto i = 0; i < map_height; i++)
+    for (auto i = rhs_values.begin(); i != rhs_values.end(); i++)
     {
-        for (auto j = 0; j < map_width; j++)
-        {
-            output.append(py::make_tuple(i, j, getRHS(state{i, j})));
-        }
+        output.append(*i);
     }
     return output;
 }
@@ -739,7 +738,7 @@ bool Dstar::replan()
     // line 33
     if (isinf(getRHS(s_start)))
     {
-        fprintf(stderr, "NO PATH TO GOAL\n");
+        fprintf(stderr, "NO PATH TO GOAL, rhs of s_start is inf!\n");
         return false;
     }
 
@@ -747,7 +746,7 @@ bool Dstar::replan()
     // sort of line 34
     std::vector<state> n;
     state cur = s_start;
-    int max_iters = 100000;
+    int max_iters = 10000000;
     // std::cout << "goal: " << s_goal << " has g value " << getG(s_goal) << " and rhs " << getRHS(s_goal) << std::endl;
     while (cur != s_goal)
     {
@@ -756,7 +755,7 @@ bool Dstar::replan()
         getPred(cur, n); // getPred == getSucc for undirected graphs
         if (n.empty())
         {
-            fprintf(stderr, "NO PATH TO GOAL\n");
+            fprintf(stderr, "NO PATH TO GOAL, no predesessors of a state on path\n");
             return false;
         }
         double cmin = std::numeric_limits<double>::infinity();
@@ -790,7 +789,7 @@ bool Dstar::replan()
         // std::cout << "cur: " << cur << " with g value " << getG(cur) <<  std::endl;
         if (max_iters-- < 0)
         {
-            fprintf(stderr, "NO PATH TO GOAL\n");
+            fprintf(stderr, "NO PATH TO GOAL, max iters hit while extracting path\n");
             return false;
         }
     }
